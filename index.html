@@ -11,6 +11,20 @@
         .nav-item { cursor: pointer; transition: all 0.2s; }
         .nav-item-active { background-color: #eff6ff; color: #1d4ed8; border-right: 4px solid #2563eb; font-weight: bold; }
         .nav-item:hover:not(.nav-item-active) { background-color: #f8fafc; }
+        
+        /* 新增：左邊欄收合動畫 CSS */
+        #sidebar {
+            transition: width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+            overflow-x: hidden;
+            white-space: nowrap;
+        }
+        .sidebar-collapsed {
+            width: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            border: none !important;
+            opacity: 0;
+        }
     </style>
 </head>
 <body>
@@ -49,13 +63,18 @@
             <div class="flex items-center gap-3">
                 <button onclick="showMainMenu()" class="text-slate-500 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-3 py-1.5 rounded-md font-bold text-sm transition-colors flex items-center gap-1"><span>◀</span> 返回主選單</button>
                 <div class="w-px h-6 bg-slate-300 mx-2"></div>
+                <!-- 新增：控制收合的漢堡按鈕 -->
+                <button onclick="toggleSidebar()" class="text-slate-500 hover:text-blue-600 p-1 rounded focus:outline-none flex items-center transition-colors mr-1">
+                    <span class="text-2xl leading-none">☰</span>
+                </button>
                 <h2 class="font-black text-slate-700 text-lg tracking-wide">ADMIN PORTAL</h2>
             </div>
             <div class="text-sm font-bold text-slate-500">Administrator</div>
         </div>
 
         <div class="flex-1 flex overflow-hidden">
-            <div class="w-64 bg-white border-r border-slate-200 flex flex-col py-4 shrink-0 overflow-y-auto">
+            <!-- 新增 id="sidebar" 以供 JS 操控 -->
+            <div id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col py-4 shrink-0 overflow-y-auto">
                 <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mb-2">一、 資料與審核</div>
                 <div class="nav-item nav-item-active px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('notate_records.html', this)"><span class="text-xl">✍️</span> <span>Notate (技術台)</span></div>
                 <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('view_records_page.html', this)"><span class="text-xl">📄</span> <span>View (歷史檢閱)</span></div>
@@ -64,7 +83,6 @@
                 <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('flagged_notes.html', this)"><span class="text-xl">🚨</span> <span>Flag (異常標記)</span></div>
                 <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('oac_analysis.html', this)"><span class="text-xl">📈</span> <span>PCS (OAC分析)</span></div>
 
-                <!-- 重新加回輸出報表區 -->
                 <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mt-6 mb-2">三、 輸出與報表</div>
                 <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('print_report.html', this)"><span class="text-xl">🖨️</span> <span>Print (產出分析PDF)</span></div>
             </div>
@@ -75,12 +93,10 @@
         </div>
     </div>
 
-<script type="module">
-        // 1. 載入 Firebase 核心與 Auth 模組
+    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
-        // 2. 貼上您的 Firebase 設定
         const firebaseConfig = {
             apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
             authDomain: "project-6981083948742415857.firebaseapp.com",
@@ -90,34 +106,26 @@
             appId: "1:708190565768:web:00658fdeff9cf79341763d"
         };
 
-        // 3. 初始化 Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
 
-        // UI 元素
         const viewLogin = document.getElementById('view-login');
         const viewMainMenu = document.getElementById('view-main-menu');
         const viewDashboard = document.getElementById('view-dashboard');
         const errorMsg = document.getElementById('login-error');
 
-        // 進入網頁時檢查是否已經登入過
         window.onload = () => { 
             if (sessionStorage.getItem('portal_logged_in') === 'true') window.showMainMenu(); 
         };
 
-        // 【關鍵修改】使用 Firebase 後端驗證
         window.handleLogin = async function() {
             const pwd = document.getElementById('login-password').value;
             try {
-                // 向 Firebase 發送帳號密碼進行驗證 (帳號為我們預設隱藏的 admin 信箱)
                 await signInWithEmailAndPassword(auth, "admin@ivan.xiao", pwd);
-                
-                // 驗證成功
                 sessionStorage.setItem('portal_logged_in', 'true');
                 errorMsg.classList.add('hidden-view');
                 window.showMainMenu();
             } catch (error) {
-                // 驗證失敗 (密碼錯誤)
                 console.error("登入失敗:", error);
                 errorMsg.classList.remove('hidden-view');
             }
@@ -150,6 +158,11 @@
             document.getElementById('content-frame').src = url;
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('nav-item-active'));
             if(clickedElement) clickedElement.classList.add('nav-item-active');
+        }
+
+        // 新增：切換左側邊欄的函數
+        window.toggleSidebar = function() {
+            document.getElementById('sidebar').classList.toggle('sidebar-collapsed');
         }
     </script>
 </body>
