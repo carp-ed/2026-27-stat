@@ -13,8 +13,8 @@
     .list-item:hover { background-color: #f1f5f9; color: #0f172a; }
     .list-item-active { background-color: #e0f2fe; border-left: 4px solid #2563eb; color: #1d4ed8; }
     
-    .report-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; background: white; margin-bottom: 1.5rem; }
-    .report-table th, .report-table td { border: 1px solid #cbd5e1; padding: 6px 4px; }
+    .report-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; background: white; margin-bottom: 1.5rem; table-layout: fixed; }
+    .report-table th, .report-table td { border: 1px solid #cbd5e1; padding: 6px 4px; overflow: hidden; word-wrap: break-word; }
     .report-table th { background-color: #f8fafc; font-weight: 700; color: #1e293b; }
     .report-table .text-left { text-align: left; padding-left: 12px; }
     
@@ -151,48 +151,61 @@
                 let stats = calcStats(offVals);
 
                 let diffHtml = '---';
+                let isMathFlagged = false; // 數學落差標記
+                
                 if (myGoe !== null && stats.mean !== null) {
                     let diff = myGoe - stats.mean;
-                    let diffClass = Math.abs(diff) >= 2 ? 'diff-warn' : 'diff-safe';
+                    
+                    // 【動態計算條件 1】：GOE 的絕對落差值 > 2.00
+                    if (Math.abs(diff) > 2.00) {
+                        isMathFlagged = true;
+                    }
+                    
+                    let diffClass = isMathFlagged ? 'diff-warn' : 'diff-safe';
                     diffHtml = `<span class="${diffClass}">${diff > 0 ? '+'+diff.toFixed(2) : diff.toFixed(2)}</span>`;
                 }
 
-                // ==========================
-                // 【新增功能】強化解析 Flag 與 Lack of TP info
-                // ==========================
-                let isFlagged = data.flags && data.flags.elements && data.flags.elements[idx];
-                let noteTxt = data.notes && data.notes.elements && data.notes.elements[idx] ? data.notes.elements[idx] : '';
-                let flagHtml = '';
+                const elemKey = `elem_${idx}`;
                 
-                // 判斷是否是一般的紅旗 (true)，或者是字串 (例如 "lack of tp info", "missed")
-                if (isFlagged === true) {
-                    flagHtml += `<span class="bg-red-100 text-red-700 px-1 rounded mr-1 font-bold">🚩</span>`;
-                } else if (typeof isFlagged === 'string' && isFlagged.trim() !== '') {
-                    flagHtml += `<span class="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded mr-1 font-bold text-[10px] uppercase">${isFlagged}</span>`;
+                let hasLackInfo = false;
+                if (data.lack_info_flags) {
+                    const flagsArr = Array.isArray(data.lack_info_flags) ? data.lack_info_flags : Object.values(data.lack_info_flags);
+                    if (flagsArr.includes(elemKey)) hasLackInfo = true;
                 }
+
+                let noteTxt = (data.flag_notes && data.flag_notes[elemKey]) ? data.flag_notes[elemKey] : '';
                 
-                // 若系統獨立儲存 lack_tp_info (安全防護檢查)
-                if (data.lack_tp_info && data.lack_tp_info[idx]) {
-                    flagHtml += `<span class="bg-slate-700 text-white px-1.5 py-0.5 rounded mr-1 font-bold text-[10px] uppercase">LACK OF TP INFO</span>`;
+                // 【終極 Flag 邏輯】：只要數學落差 > 2.00，或是有寫筆記，就亮紅旗
+                let isFlagged = isMathFlagged || (noteTxt.trim() !== '');
+
+                let flagHtml = '';
+                if (hasLackInfo) {
+                    flagHtml += `<span class="bg-slate-700 text-white px-1.5 py-0.5 rounded font-bold text-[9px] uppercase whitespace-nowrap mb-1 inline-block">Lack of TP info</span>`;
+                }
+                if (isFlagged) {
+                    flagHtml += `<span class="bg-red-100 text-red-700 px-1 rounded font-bold mr-1">🚩</span>`;
                 }
 
                 tesHtml += `
                     <tr>
                         <td class="text-slate-500">${el.id || (idx+1)}</td>
-                        <td class="text-left font-bold text-slate-800">${el.name}</td>
+                        <td class="text-left font-bold text-slate-800 break-words">${el.name}</td>
                         <td class="col-my">${myGoe !== null ? myGoe : '-'}</td>
                         <td>${stats.low !== null ? Math.round(stats.low) : '-'}</td>
                         <td>${stats.high !== null ? Math.round(stats.high) : '-'}</td>
                         <td class="font-bold text-blue-700">${stats.mean !== null ? stats.mean.toFixed(2) : '-'}</td>
                         <td class="col-diff bg-slate-50">${diffHtml}</td>
-                        <td class="text-left text-xs">${flagHtml} ${noteTxt}</td>
+                        <td class="text-left text-xs leading-tight">
+                            <div class="flex flex-col gap-1 items-start">
+                                ${flagHtml ? `<div>${flagHtml}</div>` : ''}
+                                ${noteTxt ? `<div class="text-slate-600 italic break-words w-full">${noteTxt}</div>` : ''}
+                            </div>
+                        </td>
                     </tr>
                 `;
             });
 
-            // ==========================
-            // 【新增功能】準備 PCS 的計算總和
-            // ==========================
+            // PCS 渲染與加總邏輯
             let pcsHtml = '';
             const pcsKeys = ['composition', 'presentation', 'skatingSkills'];
             const pcsLabels = ['Composition', 'Presentation', 'Skating Skills'];
@@ -200,14 +213,13 @@
             
             let sumMyPcs = 0;
             let sumMeanPcs = 0;
-            let validMeanCount = 0; // 紀錄官方平均值有效的欄位數
+            let validMeanCount = 0;
 
             pcsKeys.forEach((key, idx) => {
                 let myVal = parseFloat((data.pcs || {})[key] || 0);
                 let offVals = parseEvString((data.official_stats && data.official_stats.pcs && data.official_stats.pcs[key]) || '');
                 let stats = calcStats(offVals);
 
-                // 累加總分以供表格底部顯示
                 if (myVal > 0) sumMyPcs += myVal;
                 if (stats.mean !== null && !isNaN(stats.mean)) {
                     sumMeanPcs += stats.mean;
@@ -217,7 +229,8 @@
                 let diffHtml = '---';
                 if (myVal > 0 && stats.mean !== null) {
                     let diff = myVal - stats.mean;
-                    let diffClass = Math.abs(diff) >= 0.75 ? 'diff-warn' : 'diff-safe';
+                    // 單項 PCS 以 0.75 作為變色標準
+                    let diffClass = Math.abs(diff) > 0.75 ? 'diff-warn' : 'diff-safe';
                     diffHtml = `<span class="${diffClass}">${diff > 0 ? '+'+diff.toFixed(2) : diff.toFixed(2)}</span>`;
                 }
 
@@ -232,14 +245,13 @@
                     </tr>
                 `;
 
-                let subItemsHtml = '';
                 if (pcsCriteriaData[key]) {
                     pcsCriteriaDict[key].forEach((critText, critIndex) => {
                         let cVal = pcsCriteriaData[key][critIndex];
                         if (cVal && parseFloat(cVal) > 0) {
-                            subItemsHtml += `
+                            pcsHtml += `
                                 <tr class="pcs-crit">
-                                    <td class="text-left pl-8">• ${critText}</td>
+                                    <td class="text-left pl-8 break-words">• ${critText}</td>
                                     <td class="col-my">${parseFloat(cVal).toFixed(2)}</td>
                                     <td colspan="4" class="text-slate-300">--</td>
                                 </tr>
@@ -247,18 +259,20 @@
                         }
                     });
                 }
-                pcsHtml += subItemsHtml;
             });
 
-            // ==========================
-            // 【新增功能】在 PCS 表格底部加入總和 (TOTAL) 列
-            // ==========================
+            // PCS 表格底部的總和 (TOTAL) 列
             let totalDiffHtml = '---';
             if (validMeanCount === 3 && sumMyPcs > 0) {
                 let totalDiff = sumMyPcs - sumMeanPcs;
-                // 系統性偏差設定：總和差距達 1.5 (平均每項偏 0.5) 時亮紅燈警告
-                let totalDiffClass = Math.abs(totalDiff) >= 1.5 ? 'diff-warn text-base' : 'diff-safe text-base';
-                totalDiffHtml = `<span class="${totalDiffClass}">${totalDiff > 0 ? '+'+totalDiff.toFixed(2) : totalDiff.toFixed(2)}</span>`;
+                
+                // 【動態計算條件 2】：PCS 總和絕對落差值 > 4.50
+                let isTotalPcsFlagged = Math.abs(totalDiff) > 4.50;
+                
+                let totalDiffClass = isTotalPcsFlagged ? 'diff-warn text-base' : 'diff-safe text-base';
+                let totalFlagIcon = isTotalPcsFlagged ? `<span class="bg-red-100 text-red-700 px-1 rounded mr-1 font-bold">🚩</span>` : '';
+                
+                totalDiffHtml = `${totalFlagIcon}<span class="${totalDiffClass}">${totalDiff > 0 ? '+'+totalDiff.toFixed(2) : totalDiff.toFixed(2)}</span>`;
             }
 
             pcsHtml += `
@@ -286,9 +300,9 @@
                 <table class="report-table">
                     <thead>
                         <tr>
-                            <th width="4%">#</th><th width="24%" class="text-left">Element</th><th width="8%" class="col-my">X (My)</th>
+                            <th width="4%">#</th><th width="20%" class="text-left">Element</th><th width="8%" class="col-my">X (My)</th>
                             <th width="8%">Low</th><th width="8%">High</th><th width="8%" class="text-blue-700">Mean</th><th width="10%">Diff (X-Mean)</th>
-                            <th width="30%" class="text-left">Flag & Notes</th>
+                            <th width="34%" class="text-left">Flag & Notes</th>
                         </tr>
                     </thead>
                     <tbody>${tesHtml}</tbody>
