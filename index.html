@@ -75,24 +75,55 @@
         </div>
     </div>
 
-    <script>
-        const PORTAL_PASSWORD = "admin";
+<script type="module">
+        // 1. 載入 Firebase 核心與 Auth 模組
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+
+        // 2. 貼上您的 Firebase 設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+            authDomain: "project-6981083948742415857.firebaseapp.com",
+            projectId: "project-6981083948742415857",
+            storageBucket: "project-6981083948742415857.firebasestorage.app",
+            messagingSenderId: "708190565768",
+            appId: "1:708190565768:web:00658fdeff9cf79341763d"
+        };
+
+        // 3. 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // UI 元素
         const viewLogin = document.getElementById('view-login');
         const viewMainMenu = document.getElementById('view-main-menu');
         const viewDashboard = document.getElementById('view-dashboard');
         const errorMsg = document.getElementById('login-error');
 
-        window.onload = () => { if (sessionStorage.getItem('portal_logged_in') === 'true') showMainMenu(); };
+        // 進入網頁時檢查是否已經登入過
+        window.onload = () => { 
+            if (sessionStorage.getItem('portal_logged_in') === 'true') window.showMainMenu(); 
+        };
 
-        function handleLogin() {
-            if (document.getElementById('login-password').value === PORTAL_PASSWORD) {
+        // 【關鍵修改】使用 Firebase 後端驗證
+        window.handleLogin = async function() {
+            const pwd = document.getElementById('login-password').value;
+            try {
+                // 向 Firebase 發送帳號密碼進行驗證 (帳號為我們預設隱藏的 admin 信箱)
+                await signInWithEmailAndPassword(auth, "admin@ivan.xiao", pwd);
+                
+                // 驗證成功
                 sessionStorage.setItem('portal_logged_in', 'true');
                 errorMsg.classList.add('hidden-view');
-                showMainMenu();
-            } else { errorMsg.classList.remove('hidden-view'); }
+                window.showMainMenu();
+            } catch (error) {
+                // 驗證失敗 (密碼錯誤)
+                console.error("登入失敗:", error);
+                errorMsg.classList.remove('hidden-view');
+            }
         }
 
-        function handleLogout() {
+        window.handleLogout = function() {
             sessionStorage.removeItem('portal_logged_in');
             document.getElementById('login-password').value = '';
             viewMainMenu.classList.add('hidden-view');
@@ -100,20 +131,22 @@
             viewLogin.classList.remove('hidden-view');
         }
 
-        function showMainMenu() {
+        window.showMainMenu = function() {
             viewLogin.classList.add('hidden-view');
             viewDashboard.classList.add('hidden-view');
             viewMainMenu.classList.remove('hidden-view');
         }
 
-        function showDashboard() {
+        window.showDashboard = function() {
             viewMainMenu.classList.add('hidden-view');
             viewDashboard.classList.remove('hidden-view');
         }
 
-        function goToScoring() { window.open("https://skating-frontend2.vercel.app/", '_blank'); }
+        window.goToScoring = function() { 
+            window.open("https://skating-frontend2.vercel.app/", '_blank'); 
+        }
 
-        function loadIframe(url, clickedElement) {
+        window.loadIframe = function(url, clickedElement) {
             document.getElementById('content-frame').src = url;
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('nav-item-active'));
             if(clickedElement) clickedElement.classList.add('nav-item-active');
