@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>ISU OAC 裁判分析系統 (PCS Analysis)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .oac-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; }
+    .oac-table th, .oac-table td { border: 1px solid #cbd5e1; padding: 6px; }
+    .oac-table th { background-color: #e2e8f0; color: #334155; font-weight: 800; }
+    .oac-table .text-left { text-align: left; }
+    .alert-red { background-color: #fecaca !important; color: #991b1b; font-weight: bold; }
+    .alert-green { background-color: #bbf7d0 !important; color: #166534; font-weight: bold; }
+    .section-title { font-size: 1.25rem; font-weight: 800; color: #1e3a8a; border-left: 5px solid #3b82f6; padding-left: 10px; margin-bottom: 1rem; text-transform: uppercase;}
+  </style>
+</head>
+<body class="p-6">
+
+  <h1 class="text-3xl font-black text-center text-blue-900 mb-6 uppercase tracking-wider">
+      PCS Judge Analysis (OAC)
+  </h1>
+
+  <div class="grid grid-cols-12 gap-6 max-w-[1400px] mx-auto">
+    <!-- 左側邊欄：選擇賽事 -->
+    <div class="col-span-3 bg-white p-4 rounded-xl shadow-lg hide-scrollbar overflow-y-auto max-h-[85vh]">
+      <div class="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
+        <h2 class="text-lg font-bold text-blue-800">Competitions</h2>
+      </div>
+      <div id="comp-list" class="space-y-2">
+          <div class="text-slate-400 text-sm">載入中...</div>
+      </div>
+    </div>
+
+    <!-- 右側主內容：分析報表 -->
+    <div id="analysis-container" class="col-span-9 flex flex-col gap-8 hide-scrollbar overflow-y-auto max-h-[85vh] hidden">
+      
+      <!-- Report 1: Variance by each judge (三項差值) -->
+      <div class="bg-white p-6 rounded-xl shadow-lg">
+          <h2 class="section-title">Variance of the 3 PC marks of each skater</h2>
+          <p class="text-sm text-slate-500 mb-4">分析裁判對同一位選手的「三項分數差 (Max - Min)」。若差值 ≤ 0.25，將標記為紅色 (警示未拉開分數/Halo Effect)；差值 ≥ 1.00，標記為綠色。</p>
+          <div class="overflow-x-auto">
+              <table class="oac-table" id="variance-table">
+                  <!-- JS 生成 -->
+              </table>
+          </div>
+      </div>
+
+      <!-- Report 2: Range for the whole segment (全場最高最低) -->
+      <div class="bg-white p-6 rounded-xl shadow-lg">
+          <h2 class="section-title">Range of marks for the whole segment</h2>
+          <p class="text-sm text-slate-500 mb-4">分析裁判在「整場比賽所有選手」中給出的最低與最高 PCS (三項合併看)。區間差 ≤ 1.50 將給予紅色警示 (Corridor Judging)。</p>
+          <div class="overflow-x-auto">
+              <table class="oac-table w-1/2" id="segment-range-table">
+                  <!-- JS 生成 -->
+              </table>
+          </div>
+      </div>
+
+      <!-- Report 3: Highest and Lowest by Component (單項分布) -->
+      <div class="bg-white p-6 rounded-xl shadow-lg">
+          <h2 class="section-title">Composition / Presentation / Skills : Range</h2>
+          <p class="text-sm text-slate-500 mb-4">拆解三項指標在全場的給分區間 (Min, Max, Difference)。</p>
+          <div class="grid grid-cols-1 xl:grid-cols-3 gap-4" id="component-range-container">
+              <!-- JS 生成 -->
+          </div>
+      </div>
+
+      <!-- Report 4: Matrix Usage (給分次數矩陣與不同給分數統計) -->
+      <div class="bg-white p-6 rounded-xl shadow-lg">
+          <h2 class="section-title">Number of times a judge has given a certain mark</h2>
+          <p class="text-sm text-slate-500 mb-4">依序呈現三項分數及總分的給分次數。表格底部統計裁判「使用了幾種不同的分數 (Distinct Marks)」。</p>
+          <div class="overflow-x-auto">
+              <table class="oac-table" id="matrix-table">
+                  <!-- JS 生成 -->
+              </table>
+          </div>
+      </div>
+
+    </div>
+  </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+  authDomain: "project-6981083948742415857.firebaseapp.com",
+  projectId: "project-6981083948742415857",
+  storageBucket: "project-6981083948742415857.firebasestorage.app",
+  messagingSenderId: "708190565768",
+  appId: "1:708190565768:web:00658fdeff9cf79341763d",
+  measurementId: "G-MHC2PZ27D8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let allScoresData = []; 
+
+    function parseJudgeStr(str) {
+        if(!str) return [];
+        return str.trim().split(/[\s\t,]+/).map(n => parseFloat(n)).filter(n => !isNaN(n));
+    }
+
+    async function loadData() {
+        try {
+            const querySnapshot = await getDocs(collection(db, "scores"));
+            allScoresData = [];
+            
+            querySnapshot.forEach((doc) => {
+                allScoresData.push(doc.data());
+            });
+
+            const comps = [...new Set(allScoresData.map(d => d.competition).filter(Boolean))];
+            const compListEl = document.getElementById('comp-list');
+            compListEl.innerHTML = '';
+            
+            if (comps.length === 0) {
+                compListEl.innerHTML = '<div class="text-slate-400 text-sm">無資料</div>';
+                return;
+            }
+
+            comps.forEach(comp => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-colors mb-2';
+                btn.innerText = comp;
+                btn.onclick = () => {
+                    document.querySelectorAll('#comp-list button').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
+                    btn.classList.add('bg-blue-600', 'text-white');
+                    btn.classList.remove('bg-white', 'text-slate-700');
+                    analyzeCompetition(comp);
+                };
+                compListEl.appendChild(btn);
+            });
+
+        } catch (e) { console.error(e); }
+    }
+
+    function analyzeCompetition(compName) {
+        document.getElementById('analysis-container').classList.remove('hidden');
+
+        const skaters = allScoresData
+            .filter(d => d.competition === compName)
+            .sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
+
+        let numOfJudges = 0;
+        skaters.forEach(s => {
+            const off = s.official_stats?.pcs || {};
+            numOfJudges = Math.max(numOfJudges, parseJudgeStr(off.composition).length, parseJudgeStr(off.presentation).length, parseJudgeStr(off.skatingSkills).length);
+        });
+
+        // 初始化陣列：第 0 位是 "X"，後面是 "J1" ~ "Jn"
+        let judgesData = [{ name: 'X', allMarks: [], compMarks: [], presMarks: [], skillsMarks: [], skaterDiffs: [] }];
+        for(let j = 0; j < numOfJudges; j++) {
+            judgesData.push({ name: `J${j+1}`, allMarks: [], compMarks: [], presMarks: [], skillsMarks: [], skaterDiffs: [] });
+        }
+
+        skaters.forEach(s => {
+            // 讀取 X (自己的成績)
+            const xCo = parseFloat((s.pcs || {}).composition || 0);
+            const xPr = parseFloat((s.pcs || {}).presentation || 0);
+            const xSk = parseFloat((s.pcs || {}).skatingSkills || 0);
+            
+            const xMarks = [];
+            if (xCo > 0) { judgesData[0].compMarks.push(xCo); judgesData[0].allMarks.push(xCo); xMarks.push(xCo); }
+            if (xPr > 0) { judgesData[0].presMarks.push(xPr); judgesData[0].allMarks.push(xPr); xMarks.push(xPr); }
+            if (xSk > 0) { judgesData[0].skillsMarks.push(xSk); judgesData[0].allMarks.push(xSk); xMarks.push(xSk); }
+            
+            if (xMarks.length === 3) {
+                const max = Math.max(...xMarks);
+                const min = Math.min(...xMarks);
+                judgesData[0].skaterDiffs.push({ label: `#${s.stn} ${s.skater.substring(0, 8)}`, min: min, max: max, diff: max - min });
+            }
+
+            // 讀取 J1 ~ Jn (官方成績)
+            const off = s.official_stats?.pcs || {};
+            const coArr = parseJudgeStr(off.composition);
+            const prArr = parseJudgeStr(off.presentation);
+            const skArr = parseJudgeStr(off.skatingSkills);
+
+            for (let j = 0; j < numOfJudges; j++) {
+                const co = coArr[j];
+                const pr = prArr[j];
+                const sk = skArr[j];
+                const skaterMarks = [];
+                const targetJudge = judgesData[j + 1];
+
+                if (co !== undefined) { targetJudge.compMarks.push(co); targetJudge.allMarks.push(co); skaterMarks.push(co); }
+                if (pr !== undefined) { targetJudge.presMarks.push(pr); targetJudge.allMarks.push(pr); skaterMarks.push(pr); }
+                if (sk !== undefined) { targetJudge.skillsMarks.push(sk); targetJudge.allMarks.push(sk); skaterMarks.push(sk); }
+
+                if (skaterMarks.length === 3) {
+                    const max = Math.max(...skaterMarks);
+                    const min = Math.min(...skaterMarks);
+                    targetJudge.skaterDiffs.push({ label: `#${s.stn} ${s.skater.substring(0, 8)}`, min: min, max: max, diff: max - min });
+                }
+            }
+        });
+
+        renderVarianceTable(judgesData);
+        renderSegmentRangeTable(judgesData);
+        renderComponentRanges(judgesData);
+        renderMatrixTable(judgesData);
+    }
+
+    // Report 1: Variance by judge
+    function renderVarianceTable(judgesData) {
+        const tbody = document.getElementById('variance-table');
+        let html = `<thead><tr><th width="15%" class="text-left">Skater</th>`;
+        judgesData.forEach(j => html += `<th>${j.name}</th>`);
+        html += `</tr></thead><tbody>`;
+
+        if (judgesData[0] && judgesData[0].skaterDiffs.length > 0) {
+            const skaterCount = judgesData[0].skaterDiffs.length;
+            for(let i=0; i<skaterCount; i++) {
+                html += `<tr><td class="text-left font-bold bg-slate-50">${judgesData[0].skaterDiffs[i].label}</td>`;
+                judgesData.forEach(judge => {
+                    const diffObj = judge.skaterDiffs[i];
+                    if(!diffObj) { html += `<td>-</td>`; return; }
+                    const diffVal = diffObj.diff;
+                    let colorClass = '';
+                    if (diffVal <= 0.25) colorClass = 'alert-red'; 
+                    else if (diffVal >= 1.00) colorClass = 'alert-green'; 
+                    html += `<td class="${colorClass}">${diffVal.toFixed(2)}</td>`;
+                });
+                html += `</tr>`;
+            }
+        }
+        html += `</tbody>`;
+        tbody.innerHTML = html;
+    }
+
+    // Report 2: Range for whole segment
+    function renderSegmentRangeTable(judgesData) {
+        const tbody = document.getElementById('segment-range-table');
+        let html = `<thead><tr><th>Judge</th><th>Min</th><th>Max</th><th>Range (Max-Min)</th></tr></thead><tbody>`;
+        
+        judgesData.forEach(judge => {
+            const marks = judge.allMarks;
+            if (marks.length === 0) return;
+            const min = Math.min(...marks);
+            const max = Math.max(...marks);
+            const diff = max - min;
+            const colorClass = diff <= 1.50 ? 'alert-red' : '';
+            html += `<tr>
+                <td class="font-bold bg-slate-50">${judge.name}</td>
+                <td>${min.toFixed(2)}</td><td>${max.toFixed(2)}</td>
+                <td class="${colorClass}">${diff.toFixed(2)}</td>
+            </tr>`;
+        });
+        html += `</tbody>`;
+        tbody.innerHTML = html;
+    }
+
+    // Report 3: Component Sub-Ranges
+    function renderComponentRanges(judgesData) {
+        const container = document.getElementById('component-range-container');
+        container.innerHTML = '';
+        
+        const configs = [
+            { title: "Composition", key: "compMarks" },
+            { title: "Presentation", key: "presMarks" },
+            { title: "Skating Skills", key: "skillsMarks" }
+        ];
+
+        configs.forEach(cfg => {
+            let html = `<div class="border border-slate-200 rounded overflow-hidden">
+                <div class="bg-slate-100 font-bold p-2 text-center text-blue-900 border-b border-slate-200 uppercase">${cfg.title}</div>
+                <table class="oac-table w-full border-0">
+                    <thead><tr><th>J</th><th>Min</th><th>Max</th><th>Diff</th></tr></thead>
+                    <tbody>`;
+            
+            judgesData.forEach(judge => {
+                const marks = judge[cfg.key];
+                if (marks.length === 0) return;
+                const min = Math.min(...marks);
+                const max = Math.max(...marks);
+                const diff = max - min;
+                html += `<tr>
+                    <td class="font-bold bg-slate-50">${judge.name}</td>
+                    <td>${min.toFixed(2)}</td><td>${max.toFixed(2)}</td>
+                    <td class="${diff <= 1.0 ? 'text-red-600 font-bold' : ''}">${diff.toFixed(2)}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            container.innerHTML += html;
+        });
+    }
+
+    // Report 4: Matrix (分三項顯示，底部統計分數種類)
+    function renderMatrixTable(judgesData) {
+        const tbody = document.getElementById('matrix-table');
+        let html = `<thead><tr><th class="text-left" width="10%">Mark</th>`;
+        judgesData.forEach(j => html += `<th>${j.name}</th>`);
+        html += `</tr></thead><tbody>`;
+
+        const sections = [
+            { label: 'Composition', key: 'compMarks' },
+            { label: 'Presentation', key: 'presMarks' },
+            { label: 'Skating Skills', key: 'skillsMarks' },
+            { label: 'All PCs (Total Matrix)', key: 'allMarks' }
+        ];
+
+        sections.forEach(section => {
+            html += `<tr class="bg-blue-50 border-y-2 border-blue-200"><td colspan="${judgesData.length + 1}" class="font-black text-blue-800 text-left px-4 py-2">${section.label}</td></tr>`;
+
+            // 找出該項目出現過的最高分與最低分
+            let allUsedMarks = [];
+            judgesData.forEach(j => allUsedMarks.push(...j[section.key]));
+            if (allUsedMarks.length === 0) return;
+            
+            const overallMax = Math.max(...allUsedMarks);
+            const overallMin = Math.min(...allUsedMarks);
+
+            // 用 0.25 遞減產出矩陣的列
+            for (let m = overallMax; m >= overallMin; m -= 0.25) {
+                let hasAny = false;
+                let rowHtml = `<tr><td class="font-bold bg-slate-50 border-r-2 border-slate-300">${m.toFixed(2)}</td>`;
+                
+                judgesData.forEach(judge => {
+                    const count = judge[section.key].filter(val => val === m).length;
+                    if (count > 0) hasAny = true;
+                    rowHtml += `<td>${count > 0 ? count : ''}</td>`;
+                });
+                rowHtml += `</tr>`;
+                
+                if (hasAny) html += rowHtml;
+            }
+
+            // 在每個區塊的底部統計「多少種分數 (Distinct Marks Used)」
+            html += `<tr class="bg-yellow-50 font-bold border-t-2 border-slate-300">
+                <td class="text-right text-slate-700 border-r-2 border-slate-300">Distinct Marks Used</td>`;
+            judgesData.forEach(judge => {
+                const distinctCount = new Set(judge[section.key]).size;
+                html += `<td class="text-blue-700 text-lg">${distinctCount > 0 ? distinctCount : '-'}</td>`;
+            });
+            html += `</tr>`;
+        });
+
+        html += `</tbody>`;
+        tbody.innerHTML = html;
+    }
+
+    // 啟動載入
+    loadData();
+
+</script>
+</body>
+</html>

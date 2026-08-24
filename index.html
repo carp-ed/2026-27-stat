@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>滑冰賽事評分與分析入口網 (Scoring & Analysis Portal)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; margin: 0; height: 100vh; overflow: hidden; }
+        .hidden-view { display: none !important; }
+        .nav-item { cursor: pointer; transition: all 0.2s; }
+        .nav-item-active { background-color: #eff6ff; color: #1d4ed8; border-right: 4px solid #2563eb; font-weight: bold; }
+        .nav-item:hover:not(.nav-item-active) { background-color: #f8fafc; }
+    </style>
+</head>
+<body>
+    <div id="view-login" class="h-full w-full flex items-center justify-center bg-slate-900">
+        <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md">
+            <div class="text-center mb-8">
+                <div class="text-5xl mb-4">⛸️</div>
+                <h1 class="text-2xl font-black text-slate-800">賽事評分與分析系統</h1>
+                <p class="text-sm text-slate-500 mt-2">請輸入管理員密碼以進入系統</p>
+            </div>
+            <input type="password" id="login-password" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 mb-6 text-center text-lg" placeholder="請輸入密碼" onkeydown="if(event.key === 'Enter') handleLogin()">
+            <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-md transition-colors text-lg">登入系統 (Login)</button>
+            <div id="login-error" class="text-red-500 text-sm font-bold text-center mt-4 hidden-view">❌ 密碼錯誤，請重試！</div>
+        </div>
+    </div>
+
+    <div id="view-main-menu" class="h-full w-full flex flex-col items-center justify-center hidden-view relative">
+        <button onclick="handleLogout()" class="absolute top-6 right-6 text-slate-500 hover:text-slate-800 font-bold flex items-center gap-2"><span>🚪</span> 登出系統</button>
+        <h2 class="text-4xl font-black text-slate-800 mb-12 tracking-wider">主選單 (MAIN MENU)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full px-6">
+            <button onclick="goToScoring()" class="group bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl border-2 border-transparent hover:border-blue-500 transition-all text-left flex flex-col items-center text-center hover:-translate-y-2">
+                <div class="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-5xl mb-6 group-hover:scale-110 transition-transform">📱</div>
+                <h3 class="text-2xl font-bold text-slate-800 mb-2">評分系統 (Scoring)</h3>
+                <p class="text-slate-500">開啟平板專用評分介面，輸入要素與 PCS 分數。</p>
+            </button>
+            <button onclick="showDashboard()" class="group bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl border-2 border-transparent hover:border-indigo-500 transition-all text-left flex flex-col items-center text-center hover:-translate-y-2">
+                <div class="w-24 h-24 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-5xl mb-6 group-hover:scale-110 transition-transform">📊</div>
+                <h3 class="text-2xl font-bold text-slate-800 mb-2">後台系統 (Portal)</h3>
+                <p class="text-slate-500">進入後台管理，包含審核、檢閱與異常標記分析。</p>
+            </button>
+        </div>
+    </div>
+
+    <div id="view-dashboard" class="h-full w-full flex flex-col hidden-view">
+        <div class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 shadow-sm z-10">
+            <div class="flex items-center gap-3">
+                <button onclick="showMainMenu()" class="text-slate-500 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-3 py-1.5 rounded-md font-bold text-sm transition-colors flex items-center gap-1"><span>◀</span> 返回主選單</button>
+                <div class="w-px h-6 bg-slate-300 mx-2"></div>
+                <h2 class="font-black text-slate-700 text-lg tracking-wide">ADMIN PORTAL</h2>
+            </div>
+            <div class="text-sm font-bold text-slate-500">Administrator</div>
+        </div>
+
+        <div class="flex-1 flex overflow-hidden">
+            <div class="w-64 bg-white border-r border-slate-200 flex flex-col py-4 shrink-0 overflow-y-auto">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mb-2">一、 資料與審核</div>
+                <div class="nav-item nav-item-active px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('notate_records.html', this)"><span class="text-xl">✍️</span> <span>Notate (技術台)</span></div>
+                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('view_records_page.html', this)"><span class="text-xl">📄</span> <span>View (歷史檢閱)</span></div>
+
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mt-6 mb-2">二、 分析與檢討</div>
+                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('flagged_notes.html', this)"><span class="text-xl">🚨</span> <span>Flag (異常標記)</span></div>
+                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('oac_analysis.html', this)"><span class="text-xl">📈</span> <span>PCS (OAC分析)</span></div>
+
+                <!-- 重新加回輸出報表區 -->
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mt-6 mb-2">三、 輸出與報表</div>
+                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('print_report.html', this)"><span class="text-xl">🖨️</span> <span>Print (產出分析PDF)</span></div>
+            </div>
+
+            <div class="flex-1 bg-slate-100 relative">
+                <iframe id="content-frame" src="notate_records.html" class="w-full h-full border-0"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PORTAL_PASSWORD = "admin";
+        const viewLogin = document.getElementById('view-login');
+        const viewMainMenu = document.getElementById('view-main-menu');
+        const viewDashboard = document.getElementById('view-dashboard');
+        const errorMsg = document.getElementById('login-error');
+
+        window.onload = () => { if (sessionStorage.getItem('portal_logged_in') === 'true') showMainMenu(); };
+
+        function handleLogin() {
+            if (document.getElementById('login-password').value === PORTAL_PASSWORD) {
+                sessionStorage.setItem('portal_logged_in', 'true');
+                errorMsg.classList.add('hidden-view');
+                showMainMenu();
+            } else { errorMsg.classList.remove('hidden-view'); }
+        }
+
+        function handleLogout() {
+            sessionStorage.removeItem('portal_logged_in');
+            document.getElementById('login-password').value = '';
+            viewMainMenu.classList.add('hidden-view');
+            viewDashboard.classList.add('hidden-view');
+            viewLogin.classList.remove('hidden-view');
+        }
+
+        function showMainMenu() {
+            viewLogin.classList.add('hidden-view');
+            viewDashboard.classList.add('hidden-view');
+            viewMainMenu.classList.remove('hidden-view');
+        }
+
+        function showDashboard() {
+            viewMainMenu.classList.add('hidden-view');
+            viewDashboard.classList.remove('hidden-view');
+        }
+
+        function goToScoring() { window.open("https://skating-frontend2.vercel.app/", '_blank'); }
+
+        function loadIframe(url, clickedElement) {
+            document.getElementById('content-frame').src = url;
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('nav-item-active'));
+            if(clickedElement) clickedElement.classList.add('nav-item-active');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>成績檢閱 (View Records)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .list-item { cursor: pointer; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: all 0.2s; font-weight: 600; color: #64748b; margin-bottom: 0.25rem; border-left: 4px solid transparent;}
+    .list-item:hover { background-color: #f1f5f9; color: #334155; }
+    .list-item-active { background-color: #eff6ff; border-left: 4px solid #2563eb; color: #1d4ed8; }
+    .stat-table { width: 100%; border-collapse: collapse; font-size: 14px; background: white; text-align: center;}
+    .stat-table th, .stat-table td { border: 1px solid #e2e8f0; padding: 8px; }
+    .stat-table th { background-color: #f1f5f9; color: #334155; font-weight: 700; font-size: 12px; }
+    .stat-table .bg-self { background-color: #f5f3ff; color: #6d28d9; font-weight: bold; }
+    .stat-table .bg-official { background-color: #f0fdf4; color: #15803d; font-weight: bold;}
+    .text-modified { color: #b45309; font-weight: 800; }
+    .pcs-detail-row td { background-color: #fafafa; padding: 4px 10px; color: #64748b; font-size: 13px; font-style: italic; }
+  </style>
+</head>
+<body class="p-6 h-screen flex flex-col box-border">
+
+  <h1 class="text-3xl font-bold text-center text-blue-800 mb-6 flex items-center justify-center gap-3 shrink-0">
+      <span class="text-4xl">📄</span> Read-Only View
+  </h1>
+
+  <div class="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
+    <div class="col-span-3 bg-white p-4 rounded-xl shadow hide-scrollbar overflow-y-auto h-full">
+      <div class="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
+        <h2 class="text-lg font-bold text-blue-700">Competitions</h2>
+      </div>
+      <ul id="comp-list" class="space-y-1"><div class="text-slate-400 text-sm">載入中...</div></ul>
+    </div>
+
+    <div id="right-content-container" class="col-span-9 hide-scrollbar overflow-y-auto h-full pr-2">
+      <div id="skater-info-banner" class="bg-white p-6 rounded-xl shadow text-center text-slate-500 font-medium">
+        請從左側選擇一場賽事，以連貫檢閱所有選手成績
+      </div>
+      <div id="batch-container" class="space-y-10 pb-20" style="display: none;"></div>
+    </div>
+  </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+  authDomain: "project-6981083948742415857.firebaseapp.com",
+  projectId: "project-6981083948742415857",
+  storageBucket: "project-6981083948742415857.firebasestorage.app",
+  messagingSenderId: "708190565768",
+  appId: "1:708190565768:web:00658fdeff9cf79341763d",
+  measurementId: "G-MHC2PZ27D8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const pcsCriteriaDict = {
+      composition: ["Multidimensional use of space and design of movements", "Connections between and within elements", "Choreography reflecting musical phrase and form", "Pattern and ice coverage", "Unity"],
+      presentation: ["Expressiveness & projection", "Variety and contrast of energy and of movements", "Musical sensitivity and timing", "Oneness and awareness of space"],
+      skatingSkills: ["Variety of edges, steps, turns, movements and directions", "Clarity of edges, steps, turns, movements and body control", "Balance and glide", "Flow", "Power and speed", "Unison"]
+    };
+
+    // 【還原】OAC 純粹數學平均值邏輯
+    function calcStats(arr) {
+        if(!arr || arr.length === 0) return { low: '-', high: '-', mean: '-' };
+        let sorted = [...arr].sort((a,b)=>a-b);
+        let low = sorted[0];
+        let high = sorted[sorted.length-1];
+        
+        let mean = arr.reduce((a,b)=>a+b, 0) / arr.length;
+        
+        return { low: low.toFixed(2), high: high.toFixed(2), mean: mean.toFixed(2) };
+    }
+
+    function parseEvString(str) {
+        if(!str) return [];
+        return str.trim().split(/[\s,]+/).map(n => parseFloat(n)).filter(n => !isNaN(n));
+    }
+
+    async function loadCompetitions() {
+        const querySnapshot = await getDocs(collection(db, "scores"));
+        const grouped = {};
+        querySnapshot.forEach((doc) => {
+            const d = doc.data();
+            const comp = d.competition || "Unknown";
+            if (!grouped[comp]) grouped[comp] = [];
+            grouped[comp].push({ id: doc.id, ...d });
+        });
+
+        const container = document.getElementById('comp-list');
+        container.innerHTML = '';
+        
+        for (const comp in grouped) {
+            grouped[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
+            const li = document.createElement('li');
+            li.className = 'list-item';
+            li.innerHTML = `<span>${comp}</span><br><span class="text-[10px] text-slate-400 font-normal">(${grouped[comp].length} Skaters)</span>`;
+            li.onclick = () => {
+                document.querySelectorAll('.list-item').forEach(el => el.classList.remove('list-item-active'));
+                li.classList.add('list-item-active');
+                renderBatchView(grouped[comp]);
+            };
+            container.appendChild(li);
+        }
+    }
+
+    function renderBatchView(skatersArray) {
+        document.getElementById('skater-info-banner').style.display = 'none';
+        const container = document.getElementById('batch-container');
+        container.innerHTML = '';
+        container.style.display = 'block';
+
+        skatersArray.forEach(data => {
+            data.official_stats = data.official_stats || {};
+            
+            let tesHtml = '';
+            (data.elements || []).forEach((el, idx) => {
+                if (!el.name || el.name.trim() === '') return;
+                const savedOffEv = (data.official_stats.elements && data.official_stats.elements[idx]) ? data.official_stats.elements[idx] : '';
+                const origName = (data.original_elements && data.original_elements[idx]) ? data.original_elements[idx].name : el.name;
+                const nameHtml = (el.name !== origName) ? `<span class="text-modified" title="Original: ${origName}">${el.name}</span>` : el.name;
+                const stats = calcStats(parseEvString(savedOffEv));
+
+                tesHtml += `
+                    <tr>
+                        <td class="text-slate-500">${el.id || (idx + 1)}</td>
+                        <td class="text-left font-bold text-slate-800">${nameHtml}</td>
+                        <td>${el.fall ? '<span class="text-red-500 font-bold">F</span>' : '-'}</td>
+                        <td class="text-slate-500">${el.info || '-'}</td>
+                        <td class="bg-self">${el.goe !== null ? el.goe : '-'}</td>
+                        <td class="bg-official tracking-wider text-sm">${savedOffEv || '-'}</td>
+                        <td class="text-slate-500">${stats.low}</td><td class="text-slate-500">${stats.high}</td>
+                        <td class="font-bold text-blue-700">${stats.mean}</td>
+                    </tr>
+                `;
+            });
+
+            let pcsHtml = '';
+            const keys = ['composition', 'presentation', 'skatingSkills'];
+            const labels = ['Composition', 'Presentation', 'Skating Skills'];
+            const pcsCriteriaData = data.pcs_criteria || {};
+
+            keys.forEach((key, idx) => {
+                const myVal = parseFloat((data.pcs || {})[key] || 0);
+                const savedOffEv = (data.official_stats.pcs && data.official_stats.pcs[key]) ? data.official_stats.pcs[key] : '';
+                const stats = calcStats(parseEvString(savedOffEv));
+                
+                pcsHtml += `
+                    <tr class="bg-slate-50 border-t-2 border-slate-300">
+                        <td class="text-left font-black text-slate-800 uppercase">${labels[idx]}</td>
+                        <td class="bg-self text-base">${myVal.toFixed(2)}</td>
+                        <td class="bg-official tracking-wider text-sm">${savedOffEv || '-'}</td>
+                        <td class="text-slate-500">${stats.low}</td><td class="text-slate-500">${stats.high}</td>
+                        <td class="font-bold text-blue-700">${stats.mean}</td>
+                    </tr>
+                `;
+
+                let subItemsHtml = '';
+                if (pcsCriteriaData[key]) {
+                    pcsCriteriaDict[key].forEach((critText, critIndex) => {
+                        let cVal = pcsCriteriaData[key][critIndex];
+                        if (cVal && parseFloat(cVal) > 0) {
+                            subItemsHtml += `
+                                <tr class="pcs-detail-row">
+                                    <td class="text-left pl-8">• ${critText}</td>
+                                    <td class="font-bold text-indigo-500">${parseFloat(cVal).toFixed(2)}</td>
+                                    <td colspan="4" class="text-slate-300">--</td>
+                                </tr>
+                            `;
+                        }
+                    });
+                }
+                pcsHtml += subItemsHtml;
+            });
+
+            const skaterCard = document.createElement('div');
+            skaterCard.className = 'bg-white rounded-xl shadow border border-slate-200 overflow-hidden';
+            skaterCard.innerHTML = `
+                <div class="bg-blue-800 text-white p-4 flex justify-between items-end">
+                    <div>
+                        <div class="text-blue-200 text-xs font-bold uppercase tracking-widest mb-1">${data.tier || ''}</div>
+                        <div class="text-2xl font-black">#${data.stn || '-'} ${data.skater}</div>
+                    </div>
+                    <div class="text-xl font-bold text-blue-300">${data.noc || '---'}</div>
+                </div>
+                <div class="p-4 space-y-6">
+                    <table class="stat-table">
+                        <thead>
+                            <tr>
+                                <th width="4%">#</th><th width="20%" class="text-left">Executed Element</th><th width="4%">Fall</th><th width="6%">Info</th>
+                                <th width="6%">My EV</th><th width="15%">Official EVs</th>
+                                <th width="6%">Low</th><th width="6%">High</th><th width="6%" class="text-blue-700">Mean</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tesHtml}</tbody>
+                    </table>
+                    <table class="stat-table">
+                        <thead>
+                            <tr>
+                                <th width="40%" class="text-left">Program Components</th>
+                                <th width="10%">My EV</th><th width="15%">Official EVs</th>
+                                <th width="6%">Low</th><th width="6%">High</th><th width="6%" class="text-blue-700">Mean</th>
+                            </tr>
+                        </thead>
+                        <tbody>${pcsHtml}</tbody>
+                    </table>
+                </div>
+            `;
+            container.appendChild(skaterCard);
+        });
+    }
+
+    window.onload = loadCompetitions;
+</script>
+</body>
+</html>

@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>算分引擎與列印報表 (Scoring & Report)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Roboto', sans-serif; background-color: #e2e8f0; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    .list-item { cursor: pointer; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: all 0.2s; border-left: 4px solid transparent; font-weight: 700; color: #475569; margin-bottom: 0.25rem;}
+    .list-item:hover { background-color: #f1f5f9; color: #0f172a; }
+    .list-item-active { background-color: #e0f2fe; border-left: 4px solid #2563eb; color: #1d4ed8; }
+    
+    .protocol-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; background: white; }
+    .protocol-table th, .protocol-table td { border: 1px solid #cbd5e1; padding: 4px 6px; }
+    .protocol-table th { font-weight: 700; color: #000; }
+    .protocol-table .text-left { text-align: left; }
+    .protocol-table .text-red { color: #dc2626; } 
+    .protocol-table .bg-gray { background-color: #f8fafc; }
+    
+    .judge-col { font-weight: 700; width: 4%; }
+    .my-ev-col { background-color: #eff6ff; color: #1d4ed8; font-weight: 900; }
+    
+    @media print {
+      body { background-color: white; padding: 0 !important; }
+      #left-sidebar, #top-toolbar { display: none !important; }
+      #right-content-container { col-span: 12 !important; width: 100%; overflow: visible; padding: 0; margin: 0; }
+      .print-border-none { border: none !important; box-shadow: none !important; }
+    }
+  </style>
+</head>
+<body class="p-4 lg:p-6 h-screen flex flex-col box-border">
+
+  <div id="top-toolbar" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center mb-4 shrink-0 gap-4">
+      <h1 class="text-2xl font-black text-blue-800 flex items-center gap-2 tracking-wide">
+          <span class="text-3xl">🧮</span> Scoring Engine
+      </h1>
+      
+      <div class="flex items-center gap-4 flex-wrap">
+          <div id="sov-status" class="text-blue-600 font-bold text-sm bg-blue-50 px-3 py-1 rounded">⏳ 引擎載入中...</div>
+          
+          <select id="category-select" class="text-sm p-2 border-2 border-blue-500 rounded bg-white outline-none font-bold text-slate-800 cursor-pointer shadow-sm" onchange="triggerRecalculation()">
+              <option value="Basic Novice Boys FS" data-factor="1.67">Basic Novice Boys FS (1.67)</option>
+              <option value="Basic Novice Girls FS" data-factor="1.67">Basic Novice Girls FS (1.67)</option>
+              <option value="Intermediate Novice Boys FS" data-factor="2.00">Intermediate Novice Boys FS (2.00)</option>
+              <option value="Intermediate Novice Girls FS" data-factor="1.70">Intermediate Novice Girls FS (1.70)</option>
+              <option value="Advanced Novice Boys SP" data-factor="1.20">Advanced Novice Boys SP (1.20)</option>
+              <option value="Advanced Novice Boys FS" data-factor="2.40">Advanced Novice Boys FS (2.40)</option>
+              <option value="Advanced Novice Girls SP" data-factor="1.07">Advanced Novice Girls SP (1.07)</option>
+              <option value="Advanced Novice Girls FS" data-factor="2.13">Advanced Novice Girls FS (2.13)</option>
+              <option value="Junior Men SP" data-factor="1.67">Junior Men SP (1.67)</option>
+              <option value="Junior Men FS" data-factor="3.33">Junior Men FS (3.33)</option>
+              <option value="Junior Women SP" data-factor="1.33">Junior Women SP (1.33)</option>
+              <option value="Junior Women FS" data-factor="2.67">Junior Women FS (2.67)</option>
+              <option value="Junior Pairs SP" data-factor="1.33">Junior Pairs SP (1.33)</option>
+              <option value="Junior Pairs FS" data-factor="2.67">Junior Pairs FS (2.67)</option>
+              <option value="Senior Men SP" data-factor="1.67" selected>Senior Men SP (1.67)</option>
+              <option value="Senior Men FS" data-factor="3.33">Senior Men FS (3.33)</option>
+              <option value="Senior Women SP" data-factor="1.33">Senior Women SP (1.33)</option>
+              <option value="Senior Women FS" data-factor="2.67">Senior Women FS (2.67)</option>
+              <option value="Senior Pairs SP" data-factor="1.33">Senior Pairs SP (1.33)</option>
+              <option value="Senior Pairs FS" data-factor="2.67">Senior Pairs FS (2.67)</option>
+          </select>
+
+          <!-- 【修改 1】更新 Novice Jump Bonus 名稱與判定邏輯 (透過 JS 控制顯示) -->
+          <label id="global-bonus-container" class="hidden flex items-center gap-1 cursor-pointer font-bold text-amber-700 bg-amber-50 px-3 py-2 border border-amber-200 rounded">
+              <input type="checkbox" id="global-jump-bonus-check" class="w-4 h-4 accent-amber-600" onchange="recalcTotalsOnly()"> 
+              Novice Jump Bonus (+2.00)
+          </label>
+
+          <button onclick="window.print()" class="bg-slate-800 text-white hover:bg-black px-4 py-2 rounded font-bold shadow transition-colors flex items-center gap-2 text-sm">
+              🖨️ Print Protocol
+          </button>
+      </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
+    <!-- 左側邊欄：選手清單 -->
+    <div id="left-sidebar" class="col-span-3 bg-white p-4 rounded-xl shadow-sm hide-scrollbar overflow-y-auto h-full border border-slate-200">
+      <div class="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
+        <h2 class="text-lg font-bold text-slate-800">Competitions</h2>
+      </div>
+      <div id="skater-list" class="space-y-3"><div class="text-slate-400 text-sm">載入資料庫中...</div></div>
+    </div>
+
+    <!-- 右側報表主內容 -->
+    <div id="right-content-container" class="col-span-9 hide-scrollbar overflow-y-auto h-full pr-2">
+      <div id="report-container" class="bg-white border-2 border-slate-800 print-border-none shadow-xl p-6" style="display: none;">
+        
+        <div class="flex justify-between items-end border-b-2 border-slate-800 pb-3 mb-2">
+            <div class="flex items-baseline gap-4">
+                <span class="text-2xl font-black text-black" id="rep-stn">33</span>
+                <span class="text-2xl font-black text-blue-700 underline underline-offset-4" id="rep-skater-name">Amina DYENISOVNA</span>
+            </div>
+            <div class="text-2xl font-black text-blue-700 underline underline-offset-4" id="rep-noc">MGL</div>
+            <div class="text-center px-4">
+                <div class="text-xs font-bold text-black mb-1">Start</div>
+                <div class="font-bold text-black" id="rep-start">-</div>
+            </div>
+            <div class="text-center px-4">
+                <div class="text-xs font-bold text-black mb-1">Ded</div>
+                <input type="number" id="deductions-input" value="0.00" step="1.0" class="w-16 text-center border border-slate-300 bg-red-50 text-red-700 font-bold outline-none" onchange="recalcTotalsOnly()">
+            </div>
+            <div class="text-center pl-4">
+                <div class="text-xs font-bold text-black mb-1">Total</div>
+                <div class="text-2xl font-black text-blue-700" id="final-tss">35.74</div>
+            </div>
+        </div>
+
+        <table class="protocol-table mb-1 border-b-2 border-slate-800">
+            <thead><tr id="tss-tally-header" class="bg-gray"></tr></thead>
+            <tbody><tr id="tss-tally-row" class="text-base"></tr></tbody>
+        </table>
+
+        <!-- TES 區塊 -->
+        <table class="protocol-table border-b-2 border-slate-800 mt-4">
+            <thead id="tes-thead"></thead>
+            <tbody id="tes-tbody"></tbody>
+            <tfoot><tr id="tes-tally-row" class="bg-gray"></tr></tfoot>
+        </table>
+
+        <!-- PCS 區塊 -->
+        <table class="protocol-table mt-4">
+            <thead id="pcs-thead"></thead>
+            <tbody id="pcs-tbody"></tbody>
+            <tfoot><tr id="pcs-tally-row" class="bg-gray"></tr></tfoot>
+        </table>
+
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAMiVvAE9NCjgrWgLoDb4Akr4jWVVpeHrM",
+        authDomain: "scoring-db-7c3a7.firebaseapp.com",
+        projectId: "scoring-db-7c3a7",
+        storageBucket: "scoring-db-7c3a7.firebasestorage.app",
+        messagingSenderId: "152493798679",
+        appId: "1:152493798679:web:e9ff4211ec18767b2e7352"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let sovDict = {};
+    let currentData = null;
+    let maxJudgesCount = 0; 
+
+    // 啟動引擎
+    async function initEngine() {
+        const statusEl = document.getElementById('sov-status');
+        try {
+            const response = await fetch('./SOV.json');
+            if (!response.ok) throw new Error("JSON 讀取失敗");
+            
+            const rawSOV = await response.json();
+            rawSOV.filter(item => item.Element !== null).forEach(item => {
+                sovDict[item.Element.trim()] = item;
+            });
+
+            statusEl.className = "text-green-700 font-bold text-sm bg-green-50 px-3 py-1 rounded";
+            statusEl.innerText = `✅ SOV 引擎就緒`;
+            setTimeout(() => statusEl.style.display = 'none', 3000);
+            
+            loadSkatersList();
+        } catch (e) {
+            statusEl.className = "text-red-700 font-bold text-sm bg-red-50 px-3 py-1 rounded";
+            statusEl.innerText = "❌ 引擎啟動失敗 (請確認於 Server 環境執行)";
+        }
+    }
+
+    function calcTrimmedMean(arr) {
+        if (!arr || arr.length === 0) return 0;
+        if (arr.length >= 5) {
+            let sorted = [...arr].sort((a,b)=>a-b);
+            sorted.pop();
+            sorted.shift();
+            return sorted.reduce((a,b)=>a+b,0) / sorted.length;
+        } else {
+            return arr.reduce((a,b)=>a+b,0) / arr.length;
+        }
+    }
+
+    function parseEvString(str) {
+        if(!str) return [];
+        return str.trim().split(/[\s,]+/).map(n => parseFloat(n)).filter(n => !isNaN(n));
+    }
+
+    function formatNumber(num) {
+        if (num === 0) return "0.00";
+        let str = num.toFixed(2);
+        return num < 0 ? `<span class="text-red">${str}</span>` : str;
+    }
+
+    function parseElementRules(elementName) {
+        if (!elementName) return { bv: 0, highestElemForGoe: "", isRep: false };
+        
+        let isRep = elementName.includes("+REP");
+        let cleanName = elementName.replace("+REP", "").replace("+SEQ", "").replace("+COMBO", "");
+        let parts = cleanName.split("+");
+
+        let totalBV = 0;
+        let highestBV = -1;
+        let highestElement = "";
+
+        parts.forEach(p => {
+            p = p.trim();
+            if (p === "") return;
+            let item = sovDict[p];
+            let bv = item ? parseFloat(item["0"]) : 0;
+            totalBV += bv;
+            if (bv > highestBV) {
+                highestBV = bv;
+                highestElement = p;
+            }
+        });
+
+        if (isRep) totalBV *= 0.8;
+
+        return { bv: totalBV, highestElemForGoe: highestElement, isRep: isRep };
+    }
+
+    function calculateGoeValue(elementName, meanGoe) {
+        if (!elementName || meanGoe === 0) return 0;
+        let item = sovDict[elementName];
+        if (!item) return 0;
+
+        if (Number.isInteger(meanGoe)) return parseFloat(item[meanGoe.toString()] || 0);
+
+        let lower = Math.floor(meanGoe);
+        let upper = Math.ceil(meanGoe);
+        let valL = parseFloat(item[lower.toString()] || 0);
+        let valU = parseFloat(item[upper.toString()] || 0);
+        
+        let diff = valU - valL;
+        let fraction = meanGoe - lower;
+        
+        return valL + (diff * fraction);
+    }
+
+    async function loadSkatersList() {
+        const querySnapshot = await getDocs(collection(db, "scores"));
+        const grouped = {};
+        querySnapshot.forEach((doc) => {
+            const d = doc.data();
+            const comp = d.competition || "Unknown";
+            if (!grouped[comp]) grouped[comp] = [];
+            grouped[comp].push({ id: doc.id, ...d });
+        });
+
+        const container = document.getElementById('skater-list');
+        container.innerHTML = '';
+        
+        for (const comp in grouped) {
+            grouped[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
+            
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'border border-slate-200 rounded mb-2 overflow-hidden';
+            groupDiv.innerHTML = `<div class="bg-slate-50 font-bold text-slate-700 text-sm px-3 py-2 cursor-pointer hover:bg-slate-100" onclick="this.nextElementSibling.classList.toggle('hidden')">${comp} ▼</div><ul class="space-y-1 p-1 hidden"></ul>`;
+            
+            const ul = groupDiv.querySelector('ul');
+            grouped[comp].forEach(skater => {
+                const li = document.createElement('li');
+                li.className = 'list-item flex flex-col';
+                li.innerHTML = `<span class="text-sm">#${skater.stn || '-'} ${skater.skater}</span>`;
+                li.onclick = () => {
+                    document.querySelectorAll('.list-item').forEach(el => el.classList.remove('list-item-active'));
+                    li.classList.add('list-item-active');
+                    loadSkater(skater);
+                };
+                ul.appendChild(li);
+            });
+            container.appendChild(groupDiv);
+        }
+    }
+
+    function loadSkater(data) {
+        currentData = data;
+        document.getElementById('rep-stn').innerText = data.stn || '-';
+        document.getElementById('rep-skater-name').innerText = data.skater || 'Unknown';
+        document.getElementById('rep-noc').innerText = data.noc || '---';
+        document.getElementById('deductions-input').value = '0.00';
+        document.getElementById('report-container').style.display = 'block';
+        
+        maxJudgesCount = 0;
+        const offElements = (data.official_stats && data.official_stats.elements) ? data.official_stats.elements : [];
+        offElements.forEach(str => {
+            let len = parseEvString(str).length;
+            if (len > maxJudgesCount) maxJudgesCount = len;
+        });
+        const offPcs = (data.official_stats && data.official_stats.pcs) ? data.official_stats.pcs : {};
+        ['composition', 'presentation', 'skatingSkills'].forEach(k => {
+            let len = parseEvString(offPcs[k]).length;
+            if (len > maxJudgesCount) maxJudgesCount = len;
+        });
+
+        triggerRecalculation();
+    }
+
+    // 觸發全面重算 (建立表格與基礎架構)
+    window.triggerRecalculation = function() {
+        if (!currentData) return;
+
+        const selectEl = document.getElementById('category-select');
+        const selectedOption = selectEl.options[selectEl.selectedIndex];
+        const categoryName = selectedOption.value;
+        const pcsFactor = parseFloat(selectedOption.getAttribute('data-factor'));
+
+        // 【修改 1 & 3】定義 Novice Jump Bonus 的合法組別
+        const jumpBonusEligibleCategories = [
+            "Basic Novice Boys FS", "Basic Novice Girls FS",
+            "Intermediate Novice Boys FS", "Intermediate Novice Girls FS",
+            "Advanced Novice Boys FS", "Advanced Novice Girls FS"
+        ];
+        const isJumpBonusEligible = jumpBonusEligibleCategories.includes(categoryName);
+        
+        // 顯示或隱藏總分 Bonus 勾選框
+        document.getElementById('global-bonus-container').classList.toggle('hidden', !isJumpBonusEligible);
+        
+        // 【修改 2】定義 Adv.Bonus 的合法組別
+        const isAdvNovice = categoryName.includes("Advanced Novice");
+
+        let judgeTesTally = new Array(maxJudgesCount + 1).fill(0);
+        let judgePcsTally = new Array(maxJudgesCount + 1).fill(0);
+        let panelTotalTes = 0;
+        let panelTotalPcsBase = 0;
+
+        let judgeHeadersHtml = `<th class="bg-gray judge-col my-ev-col text-lg">X</th>`;
+        for(let i=1; i<=maxJudgesCount; i++) judgeHeadersHtml += `<th class="bg-gray judge-col">J${i}</th>`;
+
+        document.getElementById('tes-thead').innerHTML = `
+            <tr class="bg-gray">
+                <th width="15%" colspan="2" class="text-left">Element</th>
+                <th width="8%">Base<br>Value</th>
+                <th width="8%">GOE<br>Total</th>
+                ${judgeHeadersHtml}
+                <th width="8%">Score</th>
+                ${isAdvNovice ? '<th width="8%" class="text-amber-700 bg-amber-50">Adv.Bonus</th>' : ''}
+            </tr>
+        `;
+        document.getElementById('pcs-thead').innerHTML = `
+            <tr class="bg-gray">
+                <th class="text-left">Factor</th>
+                <th colspan="3"></th>
+                ${judgeHeadersHtml}
+                <th>Score</th>
+            </tr>
+        `;
+
+        // === TES ===
+        const tesTbody = document.getElementById('tes-tbody');
+        tesTbody.innerHTML = '';
+        const elements = currentData.elements || [];
+        const offElements = (currentData.official_stats && currentData.official_stats.elements) ? currentData.official_stats.elements : [];
+
+        elements.forEach((el, idx) => {
+            if (!el.name || el.name.trim() === '') return;
+
+            const myGoeGrade = el.goe !== null ? parseFloat(el.goe) : null;
+            const offGoeGrades = parseEvString(offElements[idx] || '');
+            const panelMeanGoeGrade = calcTrimmedMean(offGoeGrades);
+            
+            const parsed = parseElementRules(el.name);
+            let finalBV = parsed.bv;
+            
+            let infoStr = el.info || '';
+            if (el.fall) infoStr += (infoStr ? ' ' : '') + 'F';
+            
+            let isSecondHalf = el.bonuses && el.bonuses.second_half;
+            let bvDisplay = finalBV.toFixed(2);
+            if (isSecondHalf) {
+                finalBV *= 1.1;
+                bvDisplay = `${(parsed.bv).toFixed(2)} <span class="text-green-600 font-black">x</span>`;
+            }
+
+            const panelGoeValue = calculateGoeValue(parsed.highestElemForGoe, panelMeanGoeGrade);
+            let basePanelScore = finalBV + panelGoeValue;
+
+            let xScore = 0;
+            if (myGoeGrade !== null) {
+                xScore = finalBV + calculateGoeValue(parsed.highestElemForGoe, myGoeGrade);
+                judgeTesTally[0] += xScore;
+            }
+            
+            let judgeGradesHtml = `<td class="my-ev-col">${myGoeGrade !== null ? myGoeGrade : '-'}</td>`;
+            for(let i=0; i<maxJudgesCount; i++) {
+                if (i < offGoeGrades.length) {
+                    let jGrade = offGoeGrades[i];
+                    judgeGradesHtml += `<td>${jGrade}</td>`;
+                    judgeTesTally[i+1] += (finalBV + calculateGoeValue(parsed.highestElemForGoe, jGrade));
+                } else {
+                    judgeGradesHtml += `<td>-</td>`;
+                }
+            }
+
+            // 【修改 2】擴充 Adv.Bonus 選項
+            let advBonusHtml = '';
+            if (isAdvNovice) {
+                advBonusHtml = `
+                <td class="bg-amber-50">
+                    <select class="adv-bonus-select w-full border border-amber-200 outline-none text-xs font-bold text-amber-700 bg-transparent text-center" onchange="recalcTotalsOnly()">
+                        <option value="0">-</option>
+                        <option value="1.00">+1.00</option>
+                        <option value="2.00">+2.00</option>
+                        <option value="3.00">+3.00</option>
+                    </select>
+                </td>`;
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-slate-500">${el.id || (idx + 1)}.</td>
+                <td class="text-left">
+                    <span class="font-bold text-red-600 mr-1">${infoStr}</span>
+                    <span class="font-black text-black">${el.name}</span>
+                </td>
+                <td>${bvDisplay}</td>
+                <td>${formatNumber(panelGoeValue)}</td>
+                ${judgeGradesHtml}
+                <td class="font-bold panel-score-cell" data-base-panel="${basePanelScore}">${formatNumber(basePanelScore)}</td>
+                ${advBonusHtml}
+            `;
+            tesTbody.appendChild(tr);
+            panelTotalTes += basePanelScore;
+        });
+
+        window.basePanelTotalTes = panelTotalTes;
+        window.baseJudgeTesTally = [...judgeTesTally];
+        window.maxJudgesCount = maxJudgesCount;
+        window.isAdvNoviceState = isAdvNovice;
+        window.isJumpBonusEligibleState = isJumpBonusEligible;
+        
+        // === PCS ===
+        const pcsTbody = document.getElementById('pcs-tbody');
+        pcsTbody.innerHTML = '';
+        const pcsKeys = ['composition', 'presentation', 'skatingSkills'];
+        const pcsLabels = ['Composition', 'Presentation', 'Skating Skills'];
+        const offPcs = (currentData.official_stats && currentData.official_stats.pcs) ? currentData.official_stats.pcs : {};
+        const myPcs = currentData.pcs || {};
+
+        pcsKeys.forEach((key, idx) => {
+            const myGrade = parseFloat(myPcs[key] || 0);
+            const offGrades = parseEvString(offPcs[key] || '');
+            const panelMeanGrade = calcTrimmedMean(offGrades);
+            
+            panelTotalPcsBase += panelMeanGrade;
+            judgePcsTally[0] += myGrade; 
+
+            let judgeGradesHtml = `<td class="my-ev-col">${myGrade.toFixed(2)}</td>`;
+            for(let i=0; i<maxJudgesCount; i++) {
+                if (i < offGrades.length) {
+                    let jGrade = offGrades[i];
+                    judgeGradesHtml += `<td>${jGrade.toFixed(2)}</td>`;
+                    judgePcsTally[i+1] += jGrade;
+                } else {
+                    judgeGradesHtml += `<td>-</td>`;
+                }
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-left font-bold" colspan="4">${pcsLabels[idx]}</td>
+                <td>${pcsFactor.toFixed(2)}</td>
+                ${judgeGradesHtml}
+                <td class="font-bold">${formatNumber(panelMeanGrade)}</td>
+            `;
+            pcsTbody.appendChild(tr);
+        });
+
+        window.panelTotalPcsFactored = panelTotalPcsBase * pcsFactor;
+        window.judgePcsTallyFactored = judgePcsTally.map(val => val * pcsFactor);
+        
+        recalcTotalsOnly(); // 執行後續加總與算分
+    };
+
+    // 只負責動態加總，包含 Deductions 與 Bonus
+    window.recalcTotalsOnly = function() {
+        let finalPanelTes = window.basePanelTotalTes;
+        let finalJudgeTesTally = [...window.baseJudgeTesTally];
+        const ded = parseFloat(document.getElementById('deductions-input').value) || 0;
+
+        // 計算 Adv.Bonus 
+        const advSelects = document.querySelectorAll('.adv-bonus-select');
+        advSelects.forEach(select => {
+            const tr = select.closest('tr');
+            const panelCell = tr.querySelector('.panel-score-cell');
+            const basePanel = parseFloat(panelCell.getAttribute('data-base-panel'));
+            const bonusVal = parseFloat(select.value) || 0;
+            
+            panelCell.innerHTML = formatNumber(basePanel + bonusVal);
+            finalPanelTes += bonusVal;
+            for(let i=0; i<finalJudgeTesTally.length; i++) finalJudgeTesTally[i] += bonusVal;
+        });
+
+        // 【修改 3】計算 Novice Jump Bonus (互不衝突，疊加計算)
+        let globalJumpBonus = 0;
+        const cb = document.getElementById('global-jump-bonus-check');
+        if (window.isJumpBonusEligibleState && cb && cb.checked) {
+            globalJumpBonus = 2.00;
+        }
+        finalPanelTes += globalJumpBonus;
+        for(let i=0; i<finalJudgeTesTally.length; i++) finalJudgeTesTally[i] += globalJumpBonus;
+
+        // 繪製 TES Tally 底部
+        let bonusLabel = globalJumpBonus > 0 ? `<span class="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded ml-2 font-bold">+2.00 Bonus</span>` : '';
+        let tesFooterHtml = `<td colspan="${window.isAdvNoviceState ? '6' : '5'}" class="text-left font-bold">Judge Total TES Tally ${bonusLabel}</td>`;
+        tesFooterHtml += `<td class="my-ev-col">${formatNumber(finalJudgeTesTally[0])}</td>`;
+        for(let i=1; i<=window.maxJudgesCount; i++) tesFooterHtml += `<td class="font-bold">${formatNumber(finalJudgeTesTally[i])}</td>`;
+        tesFooterHtml += `<td class="font-bold text-blue-700 bg-gray">${formatNumber(finalPanelTes)}</td>`;
+        if (window.isAdvNoviceState) tesFooterHtml += `<td class="bg-gray"></td>`;
+        document.getElementById('tes-tally-row').innerHTML = tesFooterHtml;
+
+        // 繪製 PCS Tally 底部
+        let pcsFooterHtml = `<td colspan="5" class="text-left font-bold">Judge Total PCS Tally</td>`;
+        pcsFooterHtml += `<td class="my-ev-col">${formatNumber(window.judgePcsTallyFactored[0])}</td>`;
+        for(let i=1; i<=window.maxJudgesCount; i++) pcsFooterHtml += `<td class="font-bold">${formatNumber(window.judgePcsTallyFactored[i])}</td>`;
+        pcsFooterHtml += `<td class="font-bold text-blue-700 bg-gray">${formatNumber(window.panelTotalPcsFactored)}</td>`;
+        document.getElementById('pcs-tally-row').innerHTML = pcsFooterHtml;
+
+        // 繪製 TSS Tally 頂部 (包含扣分)
+        let tssHeaderHtml = `<th class="text-left text-sm py-2">Judge TSS Tally (+ Ded)</th>`;
+        tssHeaderHtml += `<th class="my-ev-col text-lg">X</th>`;
+        for(let i=1; i<=window.maxJudgesCount; i++) tssHeaderHtml += `<th>J${i}</th>`;
+        document.getElementById('tss-tally-header').innerHTML = tssHeaderHtml;
+
+        let tssRowHtml = `<td class="bg-gray text-left text-[10px] text-slate-500">Includes Base, GOE, Factors & Deductions</td>`;
+        
+        let xTss = finalJudgeTesTally[0] + window.judgePcsTallyFactored[0] + ded;
+        tssRowHtml += `<td class="my-ev-col">${formatNumber(xTss)}</td>`;
+        for(let i=1; i<=window.maxJudgesCount; i++) {
+            let jTss = finalJudgeTesTally[i] + window.judgePcsTallyFactored[i] + ded;
+            tssRowHtml += `<td>${formatNumber(jTss)}</td>`;
+        }
+        document.getElementById('tss-tally-row').innerHTML = tssRowHtml;
+
+        // 更新最終官方 TSS 總分
+        const finalPanelTSS = finalPanelTes + window.panelTotalPcsFactored + ded;
+        document.getElementById('final-tss').innerText = formatNumber(finalPanelTSS).replace(/<[^>]*>?/gm, '');
+    }
+
+    window.onload = initEngine;
+</script>
+</body>
+</html>

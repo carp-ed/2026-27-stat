@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>技術台審核 (Tech Panel Notation)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .list-item { cursor: pointer; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: all 0.2s; border-left: 4px solid transparent; font-weight: 600; color: #64748b; margin-bottom: 0.25rem;}
+    .list-item:hover { background-color: #f1f5f9; color: #334155; }
+    .list-item-active { background-color: #f3e8ff; border-left: 4px solid #8b5cf6; color: #6d28d9; }
+    
+    .stat-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; }
+    .stat-table th, .stat-table td { border: 1px solid #e2e8f0; padding: 6px; }
+    .stat-table th { background-color: #f1f5f9; color: #334155; font-weight: 700; font-size: 12px; }
+    .stat-table .bg-self { background-color: #f5f3ff; color: #6d28d9; font-weight: bold; }
+    .stat-table .bg-official { background-color: #f0fdf4; color: #15803d; }
+    
+    input[type="text"] { width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; outline: none; text-align: center; }
+    input[type="text"]:focus { border-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2); }
+    .input-left { text-align: left !important; font-weight: bold; }
+    .readonly-cell { background-color: #f8fafc; color: #64748b; border: none; outline: none; }
+    .input-modified { background-color: #fef08a !important; color: #854d0e !important; }
+  </style>
+</head>
+<body class="p-6 h-screen flex flex-col box-border relative">
+
+  <!-- 浮動儲存按鈕 -->
+  <button id="floating-save-btn" onclick="saveAllNotations()" class="fixed bottom-8 right-8 bg-green-600 text-white px-8 py-4 rounded-full font-black shadow-2xl hover:bg-green-700 transition-transform active:scale-95 flex items-center gap-2 z-50 text-lg" style="display: none;">
+      💾 儲存全場變更
+  </button>
+
+  <h1 class="text-3xl font-bold text-center text-purple-700 mb-6 flex items-center justify-center gap-3 shrink-0">
+      <span class="text-4xl">✍️</span> Tech Panel Notation
+  </h1>
+
+  <div class="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
+    <!-- 左側邊欄：賽事清單 -->
+    <div class="col-span-3 bg-white p-4 rounded-xl shadow hide-scrollbar overflow-y-auto h-full">
+      <div class="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
+        <h2 class="text-lg font-bold text-purple-700">Competitions</h2>
+      </div>
+      <ul id="comp-list" class="space-y-1"><div class="text-slate-400 text-sm">載入中...</div></ul>
+    </div>
+
+    <!-- 右側連貫編輯區 -->
+    <div id="right-content-container" class="col-span-9 hide-scrollbar overflow-y-auto h-full pr-2 pb-32">
+      <div id="intro-banner" class="bg-white p-6 rounded-xl shadow text-center text-slate-500 font-medium">
+        請從左側選擇一場賽事，以批次審核所有選手成績 (支援 Excel 整列貼上)
+      </div>
+      <div id="batch-container" class="space-y-8" style="display: none;"></div>
+    </div>
+  </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+  authDomain: "project-6981083948742415857.firebaseapp.com",
+  projectId: "project-6981083948742415857",
+  storageBucket: "project-6981083948742415857.firebasestorage.app",
+  messagingSenderId: "708190565768",
+  appId: "1:708190565768:web:00658fdeff9cf79341763d",
+  measurementId: "G-MHC2PZ27D8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let currentSkatersData = [];
+
+    function calcStats(numArray) {
+        if (!numArray || numArray.length === 0) return { mean: '' };
+        const sorted = [...numArray].sort((a, b) => a - b);
+        const mean = (sorted.reduce((a, b) => a + b, 0) / sorted.length);
+        return { mean: parseFloat(mean.toFixed(2)) };
+    }
+
+    function parseEvString(str) {
+        if(!str) return [];
+        return str.trim().split(/[\s,]+/).map(n => parseFloat(n)).filter(n => !isNaN(n));
+    }
+
+    window.updateStats = function(skaterId, rowId, type, myEvValue) {
+        const inputEl = document.getElementById(`off-ev-${type}-${skaterId}-${rowId}`);
+        if (!inputEl) return;
+        const stats = calcStats(parseEvString(inputEl.value));
+        document.getElementById(`mean-${type}-${skaterId}-${rowId}`).value = stats.mean;
+
+        if (type === 'elem' && stats.mean !== '') {
+            let flag = Math.abs(parseFloat(myEvValue || 0) - stats.mean) > 2.0 ? '🚨' : '';
+            document.getElementById(`flag-elem-${skaterId}-${rowId}`).innerText = flag;
+        }
+    }
+
+    window.checkModified = function(skaterId, idx) {
+        const skater = currentSkatersData.find(s => s.id === skaterId);
+        const inputEl = document.getElementById(`name-${skaterId}-${idx}`);
+        const origVal = (skater.original_elements && skater.original_elements[idx]) ? skater.original_elements[idx].name : (skater.elements[idx].name || '');
+        if (inputEl.value !== origVal) inputEl.classList.add('input-modified');
+        else inputEl.classList.remove('input-modified');
+    }
+
+    window.updateFall = function(skaterId, idx) {
+        const skater = currentSkatersData.find(s => s.id === skaterId);
+        skater.elements[idx].fall = document.getElementById(`fall-${skaterId}-${idx}`).checked;
+    }
+
+    // === 【新增】刪除選手資料功能 ===
+    window.deleteSkaterRecord = async function(skaterId) {
+        if (confirm("⚠️ 警告：確定要從雲端徹底刪除這名選手的資料嗎？此動作無法復原！")) {
+            try {
+                await deleteDoc(doc(db, "scores", skaterId));
+                alert('✅ 刪除成功！');
+                
+                // 從畫面記憶體中移除該選手
+                currentSkatersData = currentSkatersData.filter(s => s.id !== skaterId);
+                
+                // 重新渲染畫面
+                renderBatchNotate(currentSkatersData);
+                // 同步重整左側清單的數量
+                loadCompetitions();
+            } catch (e) { 
+                alert('刪除失敗，請檢查網路連線！'); 
+            }
+        }
+    };
+
+    async function loadCompetitions() {
+        const querySnapshot = await getDocs(collection(db, "scores"));
+        const grouped = {};
+        querySnapshot.forEach((doc) => {
+            const d = doc.data();
+            const comp = d.competition || "Unknown";
+            if (!grouped[comp]) grouped[comp] = [];
+            grouped[comp].push({ id: doc.id, ...d });
+        });
+
+        const container = document.getElementById('comp-list');
+        container.innerHTML = '';
+        for (const comp in grouped) {
+            grouped[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
+            const li = document.createElement('li');
+            li.className = 'list-item';
+            li.innerHTML = `<span>${comp}</span><br><span class="text-[10px] text-slate-400 font-normal">(${grouped[comp].length} Skaters)</span>`;
+            li.onclick = () => {
+                document.querySelectorAll('.list-item').forEach(el => el.classList.remove('list-item-active'));
+                li.classList.add('list-item-active');
+                renderBatchNotate(grouped[comp]);
+            };
+            container.appendChild(li);
+        }
+    }
+
+    function renderBatchNotate(skatersArray) {
+        currentSkatersData = skatersArray;
+        document.getElementById('intro-banner').style.display = 'none';
+        const container = document.getElementById('batch-container');
+        container.innerHTML = '';
+        container.style.display = 'block';
+        
+        // 如果這個賽事已經沒有選手了，就隱藏儲存按鈕
+        if (skatersArray.length === 0) {
+            document.getElementById('floating-save-btn').style.display = 'none';
+            container.innerHTML = '<div class="text-center text-slate-400 mt-10">此賽事目前無選手資料。</div>';
+            return;
+        }
+
+        document.getElementById('floating-save-btn').style.display = 'flex';
+
+        skatersArray.forEach(data => {
+            data.official_stats = data.official_stats || {};
+            const sid = data.id;
+            
+            let tesHtml = '';
+            (data.elements || []).forEach((el, idx) => {
+                if (!el.name || el.name.trim() === '') return;
+                const savedOffEv = (data.official_stats.elements && data.official_stats.elements[idx]) ? data.official_stats.elements[idx] : '';
+                const origName = (data.original_elements && data.original_elements[idx]) ? data.original_elements[idx].name : (el.name || '');
+                const isModClass = (el.name && el.name !== origName) ? 'input-modified' : '';
+
+                tesHtml += `
+                    <tr>
+                        <td class="text-slate-500">${el.id || (idx + 1)}</td>
+                        <td><input type="text" id="name-${sid}-${idx}" class="input-left ${isModClass}" value="${el.name || ''}" oninput="checkModified('${sid}', ${idx})" title="Orig: ${origName}"></td>
+                        <td style="text-align: center;"><input type="checkbox" id="fall-${sid}-${idx}" ${el.fall ? 'checked' : ''} onchange="updateFall('${sid}', ${idx})" class="w-4 h-4 cursor-pointer"></td>
+                        <td><input type="text" id="info-${sid}-${idx}" value="${el.info || ''}" placeholder="-"></td>
+                        <td class="bg-self">${el.goe !== null ? el.goe : '-'}</td>
+                        <td class="bg-official">
+                            <input type="text" id="off-ev-elem-${sid}-${idx}" class="excel-paste-elem" data-skater="${sid}" data-idx="${idx}" value="${savedOffEv}" placeholder="e.g. 1 2 1" oninput="updateStats('${sid}', ${idx}, 'elem', '${el.goe || 0}')">
+                        </td>
+                        <td><input type="text" id="mean-elem-${sid}-${idx}" class="readonly-cell" readonly></td>
+                        <td id="flag-elem-${sid}-${idx}" class="text-red-500 font-bold"></td>
+                    </tr>
+                `;
+            });
+
+            let pcsHtml = '';
+            ['composition', 'presentation', 'skatingSkills'].forEach((key, idx) => {
+                const labels = ['Composition', 'Presentation', 'Skating Skills'];
+                const myVal = parseFloat((data.pcs || {})[key] || 0).toFixed(2);
+                const savedOffEv = (data.official_stats.pcs && data.official_stats.pcs[key]) ? data.official_stats.pcs[key] : '';
+
+                pcsHtml += `
+                    <tr>
+                        <td class="text-left font-bold text-slate-700 uppercase">${labels[idx]}</td>
+                        <td class="bg-self text-base">${myVal}</td>
+                        <td class="bg-official">
+                            <input type="text" id="off-ev-pcs-${sid}-${key}" class="excel-paste-pcs" data-skater="${sid}" data-key="${key}" data-idx="${idx}" value="${savedOffEv}" placeholder="e.g. 8.5 8.7 9.0" oninput="updateStats('${sid}', '${key}', 'pcs', '${myVal}')">
+                        </td>
+                        <td><input type="text" id="mean-pcs-${sid}-${key}" class="readonly-cell" readonly></td>
+                    </tr>
+                `;
+            });
+
+            const skaterCard = document.createElement('div');
+            skaterCard.className = 'bg-white rounded-xl shadow border border-purple-200 overflow-hidden';
+            
+            // 【修改重點】標頭加入 STN 編輯框與刪除按鈕
+            skaterCard.innerHTML = `
+                <div class="bg-purple-50 p-4 border-b border-purple-200 flex justify-between items-end flex-wrap gap-4">
+                    <div>
+                        <div class="text-purple-600 text-xs font-bold uppercase tracking-widest mb-1">${data.tier || ''}</div>
+                        <div class="text-2xl font-black text-purple-900 flex items-center gap-1">
+                            <span class="text-xl">#</span>
+                            <input type="text" id="edit-skater-stn-${sid}" value="${data.stn || ''}" class="w-10 font-black bg-transparent border-b border-dashed border-purple-300 outline-none text-center text-purple-900" placeholder="-">
+                            <input type="text" id="edit-skater-name-${sid}" value="${data.skater}" class="font-black bg-transparent border-b border-dashed border-purple-300 outline-none w-48 input-left ml-2">
+                        </div>
+                    </div>
+                    <div class="flex items-end gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-purple-500 mr-2">NOC</label>
+                            <input type="text" id="edit-skater-noc-${sid}" value="${data.noc || ''}" class="w-16 font-bold bg-transparent border-b border-dashed border-purple-300 outline-none text-xl text-purple-900 text-center">
+                        </div>
+                        <button onclick="deleteSkaterRecord('${sid}')" class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-3 py-2 rounded text-sm font-bold border border-red-200 transition-colors shadow-sm">
+                            🗑️ 刪除
+                        </button>
+                    </div>
+                </div>
+                <div class="p-4 space-y-6">
+                    <table class="stat-table">
+                        <thead>
+                            <tr><th width="4%">#</th><th width="20%">Element</th><th width="5%">Fall</th><th width="8%">Info</th><th width="8%">My EV</th><th width="20%">Official EVs</th><th width="8%">Mean</th><th width="5%"></th></tr>
+                        </thead>
+                        <tbody>${tesHtml}</tbody>
+                    </table>
+                    <table class="stat-table">
+                        <thead>
+                            <tr><th width="40%">Program Components</th><th width="10%">My EV</th><th width="20%">Official EVs</th><th width="10%">Mean</th></tr>
+                        </thead>
+                        <tbody>${pcsHtml}</tbody>
+                    </table>
+                </div>
+            `;
+            container.appendChild(skaterCard);
+
+            (data.elements || []).forEach((el, idx) => { if(el.name) updateStats(sid, idx, 'elem', el.goe||0); });
+            ['composition', 'presentation', 'skatingSkills'].forEach((key) => { updateStats(sid, key, 'pcs', data.pcs?.[key]||0); });
+        });
+    }
+
+    document.getElementById('right-content-container').addEventListener('paste', function(e) {
+        if (e.target.classList.contains('excel-paste-elem')) {
+            e.preventDefault();
+            const rows = (e.clipboardData || window.clipboardData).getData('text').split('\n');
+            const sid = e.target.getAttribute('data-skater');
+            const startIdx = parseInt(e.target.getAttribute('data-idx'));
+            const skater = currentSkatersData.find(s => s.id === sid);
+
+            rows.forEach((rowStr, offset) => {
+                if (!rowStr.trim()) return;
+                const targetIdx = startIdx + offset;
+                if (targetIdx < 16 && skater && skater.elements[targetIdx]) {
+                    const el = document.getElementById(`off-ev-elem-${sid}-${targetIdx}`);
+                    if (el) { el.value = rowStr.trim().replace(/\t/g, ' '); window.updateStats(sid, targetIdx, 'elem', skater.elements[targetIdx].goe || 0); }
+                }
+            });
+        }
+        else if (e.target.classList.contains('excel-paste-pcs')) {
+            e.preventDefault();
+            const rows = (e.clipboardData || window.clipboardData).getData('text').split('\n');
+            const sid = e.target.getAttribute('data-skater');
+            const startIdx = parseInt(e.target.getAttribute('data-idx'));
+            const keys = ['composition', 'presentation', 'skatingSkills'];
+
+            rows.forEach((rowStr, offset) => {
+                if (!rowStr.trim()) return;
+                const targetIdx = startIdx + offset;
+                if (targetIdx < 3) {
+                    const key = keys[targetIdx];
+                    const el = document.getElementById(`off-ev-pcs-${sid}-${key}`);
+                    if (el) { el.value = rowStr.trim().replace(/\t/g, ' '); window.updateStats(sid, key, 'pcs', 0); }
+                }
+            });
+        }
+    });
+
+    // 批次儲存至 Firebase
+    window.saveAllNotations = async function() {
+        const btn = document.getElementById('floating-save-btn');
+        btn.innerHTML = '⏳ 儲存中...';
+        btn.classList.add('opacity-75');
+
+        try {
+            await Promise.all(currentSkatersData.map(async (skater) => {
+                const sid = skater.id;
+                
+                // 【修改重點】儲存時抓取 STN 的輸入值
+                skater.stn = document.getElementById(`edit-skater-stn-${sid}`).value;
+                skater.skater = document.getElementById(`edit-skater-name-${sid}`).value;
+                skater.noc = document.getElementById(`edit-skater-noc-${sid}`).value;
+
+                let offElems = [];
+                skater.elements.forEach((el, idx) => {
+                    el.name = document.getElementById(`name-${sid}-${idx}`) ? document.getElementById(`name-${sid}-${idx}`).value : el.name;
+                    el.info = document.getElementById(`info-${sid}-${idx}`) ? document.getElementById(`info-${sid}-${idx}`).value : el.info;
+                    const offEvEl = document.getElementById(`off-ev-elem-${sid}-${idx}`);
+                    offElems.push(offEvEl ? offEvEl.value : ''); 
+                });
+
+                skater.official_stats = {
+                    elements: offElems,
+                    pcs: {
+                        composition: document.getElementById(`off-ev-pcs-${sid}-composition`)?.value || '',
+                        presentation: document.getElementById(`off-ev-pcs-${sid}-presentation`)?.value || '',
+                        skatingSkills: document.getElementById(`off-ev-pcs-${sid}-skatingSkills`)?.value || ''
+                    }
+                };
+                
+                return setDoc(doc(db, "scores", sid), skater, { merge: true });
+            }));
+
+            alert('✅ 儲存成功！全場賽事已更新至雲端。');
+            btn.innerHTML = '💾 儲存全場變更';
+            btn.classList.remove('opacity-75');
+            
+            // 重整一次側邊欄（因為 STN 排序可能改變）
+            loadCompetitions();
+        } catch (e) { 
+            alert('儲存失敗，請確認網路連線！'); 
+            btn.innerHTML = '💾 儲存全場變更';
+        }
+    }
+
+    window.onload = loadCompetitions;
+</script>
+</body>
+</html>
