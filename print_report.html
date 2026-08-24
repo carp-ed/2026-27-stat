@@ -77,13 +77,13 @@
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
-  apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
-  authDomain: "project-6981083948742415857.firebaseapp.com",
-  projectId: "project-6981083948742415857",
-  storageBucket: "project-6981083948742415857.firebasestorage.app",
-  messagingSenderId: "708190565768",
-  appId: "1:708190565768:web:00658fdeff9cf79341763d",
-  measurementId: "G-MHC2PZ27D8"
+      apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+      authDomain: "project-6981083948742415857.firebaseapp.com",
+      projectId: "project-6981083948742415857",
+      storageBucket: "project-6981083948742415857.firebasestorage.app",
+      messagingSenderId: "708190565768",
+      appId: "1:708190565768:web:00658fdeff9cf79341763d",
+      measurementId: "G-MHC2PZ27D8"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -95,15 +95,12 @@
       skatingSkills: ["Variety of edges, steps, turns, movements and directions", "Clarity of edges, steps, turns, movements and body control", "Balance and glide", "Flow", "Power and speed", "Unison"]
     };
 
-    // 【還原】OAC 純粹數學平均值邏輯 (不論人數皆全部平均)
     function calcStats(arr) {
         if(!arr || arr.length === 0) return { low: null, high: null, mean: null };
         let sorted = [...arr].sort((a,b)=>a-b);
         let low = sorted[0];
         let high = sorted[sorted.length-1];
-        
         let mean = arr.reduce((a,b)=>a+b, 0) / arr.length;
-        
         return { low, high, mean };
     }
 
@@ -160,9 +157,24 @@
                     diffHtml = `<span class="${diffClass}">${diff > 0 ? '+'+diff.toFixed(2) : diff.toFixed(2)}</span>`;
                 }
 
+                // ==========================
+                // 【新增功能】強化解析 Flag 與 Lack of TP info
+                // ==========================
                 let isFlagged = data.flags && data.flags.elements && data.flags.elements[idx];
                 let noteTxt = data.notes && data.notes.elements && data.notes.elements[idx] ? data.notes.elements[idx] : '';
-                let flagHtml = isFlagged ? `<span class="bg-red-100 text-red-700 px-1 rounded mr-1 font-bold">🚩</span>` : '';
+                let flagHtml = '';
+                
+                // 判斷是否是一般的紅旗 (true)，或者是字串 (例如 "lack of tp info", "missed")
+                if (isFlagged === true) {
+                    flagHtml += `<span class="bg-red-100 text-red-700 px-1 rounded mr-1 font-bold">🚩</span>`;
+                } else if (typeof isFlagged === 'string' && isFlagged.trim() !== '') {
+                    flagHtml += `<span class="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded mr-1 font-bold text-[10px] uppercase">${isFlagged}</span>`;
+                }
+                
+                // 若系統獨立儲存 lack_tp_info (安全防護檢查)
+                if (data.lack_tp_info && data.lack_tp_info[idx]) {
+                    flagHtml += `<span class="bg-slate-700 text-white px-1.5 py-0.5 rounded mr-1 font-bold text-[10px] uppercase">LACK OF TP INFO</span>`;
+                }
 
                 tesHtml += `
                     <tr>
@@ -178,15 +190,29 @@
                 `;
             });
 
+            // ==========================
+            // 【新增功能】準備 PCS 的計算總和
+            // ==========================
             let pcsHtml = '';
             const pcsKeys = ['composition', 'presentation', 'skatingSkills'];
             const pcsLabels = ['Composition', 'Presentation', 'Skating Skills'];
             const pcsCriteriaData = data.pcs_criteria || {};
+            
+            let sumMyPcs = 0;
+            let sumMeanPcs = 0;
+            let validMeanCount = 0; // 紀錄官方平均值有效的欄位數
 
             pcsKeys.forEach((key, idx) => {
                 let myVal = parseFloat((data.pcs || {})[key] || 0);
                 let offVals = parseEvString((data.official_stats && data.official_stats.pcs && data.official_stats.pcs[key]) || '');
                 let stats = calcStats(offVals);
+
+                // 累加總分以供表格底部顯示
+                if (myVal > 0) sumMyPcs += myVal;
+                if (stats.mean !== null && !isNaN(stats.mean)) {
+                    sumMeanPcs += stats.mean;
+                    validMeanCount++;
+                }
 
                 let diffHtml = '---';
                 if (myVal > 0 && stats.mean !== null) {
@@ -223,6 +249,27 @@
                 }
                 pcsHtml += subItemsHtml;
             });
+
+            // ==========================
+            // 【新增功能】在 PCS 表格底部加入總和 (TOTAL) 列
+            // ==========================
+            let totalDiffHtml = '---';
+            if (validMeanCount === 3 && sumMyPcs > 0) {
+                let totalDiff = sumMyPcs - sumMeanPcs;
+                // 系統性偏差設定：總和差距達 1.5 (平均每項偏 0.5) 時亮紅燈警告
+                let totalDiffClass = Math.abs(totalDiff) >= 1.5 ? 'diff-warn text-base' : 'diff-safe text-base';
+                totalDiffHtml = `<span class="${totalDiffClass}">${totalDiff > 0 ? '+'+totalDiff.toFixed(2) : totalDiff.toFixed(2)}</span>`;
+            }
+
+            pcsHtml += `
+                <tr class="border-t-[4px] border-slate-700 bg-slate-200">
+                    <td class="text-right font-black text-slate-900 uppercase tracking-widest pr-6 py-2">Total Score</td>
+                    <td class="col-my text-base font-black py-2">${sumMyPcs > 0 ? sumMyPcs.toFixed(2) : '-'}</td>
+                    <td colspan="2" class="py-2"></td>
+                    <td class="font-black text-blue-900 text-base py-2">${validMeanCount === 3 ? sumMeanPcs.toFixed(2) : '-'}</td>
+                    <td class="col-diff py-2">${totalDiffHtml}</td>
+                </tr>
+            `;
 
             const pageDiv = document.createElement('div');
             pageDiv.className = 'print-page';
