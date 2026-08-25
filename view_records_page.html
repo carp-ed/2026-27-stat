@@ -4,41 +4,33 @@
   <meta charset="UTF-8">
   <title>成績檢閱 (View Records)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
-    .list-item { cursor: pointer; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: all 0.2s; font-weight: 600; color: #64748b; margin-bottom: 0.25rem; border-left: 4px solid transparent;}
-    .list-item:hover { background-color: #f1f5f9; color: #334155; }
-    .list-item-active { background-color: #eff6ff; border-left: 4px solid #2563eb; color: #1d4ed8; }
-    .stat-table { width: 100%; border-collapse: collapse; font-size: 14px; background: white; text-align: center;}
-    .stat-table th, .stat-table td { border: 1px solid #e2e8f0; padding: 8px; }
-    .stat-table th { background-color: #f1f5f9; color: #334155; font-weight: 700; font-size: 12px; }
-    .stat-table .bg-self { background-color: #f5f3ff; color: #6d28d9; font-weight: bold; }
-    .stat-table .bg-official { background-color: #f0fdf4; color: #15803d; font-weight: bold;}
+    
+    .stat-table { width: 100%; border-collapse: collapse; font-size: 14px; background: white; text-align: center; table-layout: auto;}
+    .stat-table th, .stat-table td { border: 1px solid #e2e8f0; padding: 8px 4px; }
+    .stat-table th { background-color: #f1f5f9; color: #334155; font-weight: 800; font-size: 13px; text-transform: uppercase; }
+    .stat-table .bg-self { background-color: #f5f3ff; color: #6d28d9; font-weight: 900; font-size: 15px;}
+    
     .text-modified { color: #b45309; font-weight: 800; }
-    .pcs-detail-row td { background-color: #fafafa; padding: 4px 10px; color: #64748b; font-size: 13px; font-style: italic; }
+    .flagged-num { background-color: #dc2626 !important; color: white !important; font-weight: 900 !important; font-size: 16px; }
   </style>
 </head>
 <body class="p-6 h-screen flex flex-col box-border">
 
   <h1 class="text-3xl font-bold text-center text-blue-800 mb-6 flex items-center justify-center gap-3 shrink-0">
-      <span class="text-4xl">📄</span> Read-Only View
+      <span class="text-4xl">📄</span> Read-Only View (Detailed J1-Jn)
   </h1>
 
-  <div class="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
-    <div class="col-span-3 bg-white p-4 rounded-xl shadow hide-scrollbar overflow-y-auto h-full">
-      <div class="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
-        <h2 class="text-lg font-bold text-blue-700">Competitions</h2>
+  <!-- 瘦身：移除 grid 佈局，直接滿版滿寬 -->
+  <div class="flex-1 overflow-hidden w-full relative">
+    <div id="right-content-container" class="w-full hide-scrollbar overflow-y-auto h-full pr-2">
+      <div id="skater-info-banner" class="bg-white p-8 rounded-xl shadow border border-slate-200 text-center text-slate-500 font-medium text-lg max-w-2xl mx-auto mt-20">
+        👆 請從左上方「Global Event Select」選擇一場賽事
       </div>
-      <ul id="comp-list" class="space-y-1"><div class="text-slate-400 text-sm">載入中...</div></ul>
-    </div>
-
-    <div id="right-content-container" class="col-span-9 hide-scrollbar overflow-y-auto h-full pr-2">
-      <div id="skater-info-banner" class="bg-white p-6 rounded-xl shadow text-center text-slate-500 font-medium">
-        請從左側選擇一場賽事，以連貫檢閱所有選手成績
-      </div>
-      <div id="batch-container" class="space-y-10 pb-20" style="display: none;"></div>
+      <div id="batch-container" class="space-y-10 pb-20 w-full" style="display: none;"></div>
     </div>
   </div>
 
@@ -47,67 +39,82 @@
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
-  apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
-  authDomain: "project-6981083948742415857.firebaseapp.com",
-  projectId: "project-6981083948742415857",
-  storageBucket: "project-6981083948742415857.firebasestorage.app",
-  messagingSenderId: "708190565768",
-  appId: "1:708190565768:web:00658fdeff9cf79341763d",
-  measurementId: "G-MHC2PZ27D8"
+      apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+      authDomain: "project-6981083948742415857.firebaseapp.com",
+      projectId: "project-6981083948742415857",
+      storageBucket: "project-6981083948742415857.firebasestorage.app",
+      messagingSenderId: "708190565768",
+      appId: "1:708190565768:web:00658fdeff9cf79341763d",
+      measurementId: "G-MHC2PZ27D8"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const pcsCriteriaDict = {
-      composition: ["Multidimensional use of space and design of movements", "Connections between and within elements", "Choreography reflecting musical phrase and form", "Pattern and ice coverage", "Unity"],
-      presentation: ["Expressiveness & projection", "Variety and contrast of energy and of movements", "Musical sensitivity and timing", "Oneness and awareness of space"],
-      skatingSkills: ["Variety of edges, steps, turns, movements and directions", "Clarity of edges, steps, turns, movements and body control", "Balance and glide", "Flow", "Power and speed", "Unison"]
-    };
-
-    // 【還原】OAC 純粹數學平均值邏輯
-    function calcStats(arr) {
-        if(!arr || arr.length === 0) return { low: '-', high: '-', mean: '-' };
-        let sorted = [...arr].sort((a,b)=>a-b);
-        let low = sorted[0];
-        let high = sorted[sorted.length-1];
-        
-        let mean = arr.reduce((a,b)=>a+b, 0) / arr.length;
-        
-        return { low: low.toFixed(2), high: high.toFixed(2), mean: mean.toFixed(2) };
-    }
+    let groupedByComp = {};
+    let isDataLoaded = false;
+    let pendingComp = null; // 處理廣播比資料先到的時差問題
 
     function parseEvString(str) {
         if(!str) return [];
         return str.trim().split(/[\s,]+/).map(n => parseFloat(n)).filter(n => !isNaN(n));
     }
 
-    async function loadCompetitions() {
-        const querySnapshot = await getDocs(collection(db, "scores"));
-        const grouped = {};
-        querySnapshot.forEach((doc) => {
-            const d = doc.data();
-            const comp = d.competition || "Unknown";
-            if (!grouped[comp]) grouped[comp] = [];
-            grouped[comp].push({ id: doc.id, ...d });
-        });
+    function generateJudgeTds(arr, maxN, isDecimal = false) {
+        if (!arr || arr.length === 0) return Array(maxN).fill('<td class="text-slate-300 bg-slate-50/50">-</td>').join('');
+        let html = '';
+        for(let i=0; i<maxN; i++) {
+            if (i < arr.length) {
+                let val = arr[i];
+                let displayVal = isDecimal ? val.toFixed(2) : Math.round(val);
+                html += `<td class="font-semibold text-slate-700 bg-slate-50/50">${displayVal}</td>`;
+            } else {
+                html += `<td class="text-slate-300 bg-slate-50/50">-</td>`;
+            }
+        }
+        return html;
+    }
 
-        const container = document.getElementById('comp-list');
-        container.innerHTML = '';
-        
-        for (const comp in grouped) {
-            grouped[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
-            const li = document.createElement('li');
-            li.className = 'list-item';
-            li.innerHTML = `<span>${comp}</span><br><span class="text-[10px] text-slate-400 font-normal">(${grouped[comp].length} Skaters)</span>`;
-            li.onclick = () => {
-                document.querySelectorAll('.list-item').forEach(el => el.classList.remove('list-item-active'));
-                li.classList.add('list-item-active');
-                renderBatchView(grouped[comp]);
-            };
-            container.appendChild(li);
+    // 背景抓取資料，不再自己渲染選單
+    async function loadAllData() {
+        try {
+            const querySnapshot = await getDocs(collection(db, "scores"));
+            groupedByComp = {};
+            querySnapshot.forEach((doc) => {
+                const d = doc.data();
+                const comp = d.competition || "Unknown";
+                if (!groupedByComp[comp]) groupedByComp[comp] = [];
+                groupedByComp[comp].push({ id: doc.id, ...d });
+            });
+
+            for (const comp in groupedByComp) {
+                groupedByComp[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
+            }
+
+            isDataLoaded = true;
+            // 如果在載入資料期間，已經收到首頁的廣播，就立刻渲染
+            if (pendingComp) {
+                renderBatchView(groupedByComp[pendingComp] || []);
+                pendingComp = null;
+            }
+        } catch (error) {
+            console.error("載入失敗:", error);
         }
     }
+
+    // 【新增】監聽來自 index.html 的跨網頁廣播
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'GLOBAL_COMP_SELECTED') {
+            const selectedComp = event.data.comp;
+            if (isDataLoaded) {
+                renderBatchView(groupedByComp[selectedComp] || []);
+            } else {
+                // 資料還沒抓完，先存起來排隊
+                pendingComp = selectedComp;
+                document.getElementById('skater-info-banner').innerText = "資料載入中，請稍候...";
+            }
+        }
+    });
 
     function renderBatchView(skatersArray) {
         document.getElementById('skater-info-banner').style.display = 'none';
@@ -115,27 +122,55 @@
         container.innerHTML = '';
         container.style.display = 'block';
 
+        if(skatersArray.length === 0) {
+            container.innerHTML = `<div class="text-center text-slate-500 font-bold p-10 bg-white rounded-xl shadow border">該賽事無選手資料</div>`;
+            return;
+        }
+
         skatersArray.forEach(data => {
             data.official_stats = data.official_stats || {};
             
+            let maxN = 0;
+            (data.elements || []).forEach((el, idx) => {
+                let offVals = parseEvString((data.official_stats.elements && data.official_stats.elements[idx]) || '');
+                if (offVals.length > maxN) maxN = offVals.length;
+            });
+            ['composition', 'presentation', 'skatingSkills'].forEach(key => {
+                let offVals = parseEvString((data.official_stats.pcs && data.official_stats.pcs[key]) || '');
+                if (offVals.length > maxN) maxN = offVals.length;
+            });
+            if (maxN === 0) maxN = 5;
+
+            let judgeHeaders = '';
+            for(let i=1; i<=maxN; i++) judgeHeaders += `<th width="6%">J${i}</th>`;
+
             let tesHtml = '';
             (data.elements || []).forEach((el, idx) => {
                 if (!el.name || el.name.trim() === '') return;
+                
+                let myGoe = el.goe !== null ? Math.round(parseFloat(el.goe)) : null;
                 const savedOffEv = (data.official_stats.elements && data.official_stats.elements[idx]) ? data.official_stats.elements[idx] : '';
+                const offVals = parseEvString(savedOffEv);
+                let mean = offVals.length > 0 ? (offVals.reduce((a,b)=>a+b,0) / offVals.length) : null;
+
                 const origName = (data.original_elements && data.original_elements[idx]) ? data.original_elements[idx].name : el.name;
                 const nameHtml = (el.name !== origName) ? `<span class="text-modified" title="Original: ${origName}">${el.name}</span>` : el.name;
-                const stats = calcStats(parseEvString(savedOffEv));
+                
+                let isFlagged = false;
+                if (myGoe !== null && mean !== null && Math.abs(myGoe - mean) > 2.00) isFlagged = true;
+                
+                let numClass = isFlagged ? 'flagged-num' : 'text-slate-500 font-bold bg-slate-50';
+                let judgeTds = generateJudgeTds(offVals, maxN, false);
 
                 tesHtml += `
                     <tr>
-                        <td class="text-slate-500">${el.id || (idx + 1)}</td>
-                        <td class="text-left font-bold text-slate-800">${nameHtml}</td>
-                        <td>${el.fall ? '<span class="text-red-500 font-bold">F</span>' : '-'}</td>
-                        <td class="text-slate-500">${el.info || '-'}</td>
-                        <td class="bg-self">${el.goe !== null ? el.goe : '-'}</td>
-                        <td class="bg-official tracking-wider text-sm">${savedOffEv || '-'}</td>
-                        <td class="text-slate-500">${stats.low}</td><td class="text-slate-500">${stats.high}</td>
-                        <td class="font-bold text-blue-700">${stats.mean}</td>
+                        <td class="${numClass}">${el.id || (idx + 1)}</td>
+                        <td class="text-left font-bold text-slate-800 tracking-wide pl-4">${nameHtml}</td>
+                        <td>${el.fall ? '<span class="text-red-600 font-black">F</span>' : '-'}</td>
+                        <td class="text-slate-500 text-xs">${el.info || '-'}</td>
+                        <td class="bg-self">${myGoe !== null ? myGoe : '-'}</td>
+                        ${judgeTds}
+                        <td class="font-black text-blue-800 text-base bg-blue-50/30">${mean !== null ? mean.toFixed(2) : '-'}</td>
                     </tr>
                 `;
             });
@@ -143,79 +178,116 @@
             let pcsHtml = '';
             const keys = ['composition', 'presentation', 'skatingSkills'];
             const labels = ['Composition', 'Presentation', 'Skating Skills'];
-            const pcsCriteriaData = data.pcs_criteria || {};
+            
+            let sumMyPcs = 0;
+            let sumMeanPcs = 0;
+            let validMeanCount = 0;
+            let judgeScores = { composition: [], presentation: [], skatingSkills: [] };
 
             keys.forEach((key, idx) => {
                 const myVal = parseFloat((data.pcs || {})[key] || 0);
                 const savedOffEv = (data.official_stats.pcs && data.official_stats.pcs[key]) ? data.official_stats.pcs[key] : '';
-                const stats = calcStats(parseEvString(savedOffEv));
+                const offVals = parseEvString(savedOffEv);
+                
+                judgeScores[key] = offVals;
+                let mean = offVals.length > 0 ? (offVals.reduce((a,b)=>a+b,0) / offVals.length) : null;
+                
+                if (myVal > 0) sumMyPcs += myVal;
+                if (mean !== null && !isNaN(mean)) { sumMeanPcs += mean; validMeanCount++; }
+
+                let judgeTds = generateJudgeTds(offVals, maxN, true);
                 
                 pcsHtml += `
-                    <tr class="bg-slate-50 border-t-2 border-slate-300">
-                        <td class="text-left font-black text-slate-800 uppercase">${labels[idx]}</td>
-                        <td class="bg-self text-base">${myVal.toFixed(2)}</td>
-                        <td class="bg-official tracking-wider text-sm">${savedOffEv || '-'}</td>
-                        <td class="text-slate-500">${stats.low}</td><td class="text-slate-500">${stats.high}</td>
-                        <td class="font-bold text-blue-700">${stats.mean}</td>
+                    <tr class="bg-slate-50 border-t-[3px] border-slate-300">
+                        <td class="text-left font-black text-slate-800 uppercase tracking-widest pl-4">${labels[idx]}</td>
+                        <td class="bg-self">${myVal > 0 ? myVal.toFixed(2) : '-'}</td>
+                        ${judgeTds}
+                        <td class="font-black text-blue-800 text-base bg-blue-50/30">${mean !== null ? mean.toFixed(2) : '-'}</td>
                     </tr>
                 `;
-
-                let subItemsHtml = '';
-                if (pcsCriteriaData[key]) {
-                    pcsCriteriaDict[key].forEach((critText, critIndex) => {
-                        let cVal = pcsCriteriaData[key][critIndex];
-                        if (cVal && parseFloat(cVal) > 0) {
-                            subItemsHtml += `
-                                <tr class="pcs-detail-row">
-                                    <td class="text-left pl-8">• ${critText}</td>
-                                    <td class="font-bold text-indigo-500">${parseFloat(cVal).toFixed(2)}</td>
-                                    <td colspan="4" class="text-slate-300">--</td>
-                                </tr>
-                            `;
-                        }
-                    });
-                }
-                pcsHtml += subItemsHtml;
             });
 
+            const cLen = judgeScores.composition.length;
+            const pLen = judgeScores.presentation.length;
+            const sLen = judgeScores.skatingSkills.length;
+            let totalsArray = [];
+            if (cLen > 0 && cLen === pLen && pLen === sLen) {
+                for (let i = 0; i < cLen; i++) {
+                    totalsArray.push(judgeScores.composition[i] + judgeScores.presentation[i] + judgeScores.skatingSkills[i]);
+                }
+            }
+
+            let totalJudgeTds = generateJudgeTds(totalsArray, maxN, true);
+            let totalLabelClass = 'font-black text-slate-900 uppercase tracking-widest text-right pr-6 py-3';
+            if (validMeanCount === 3 && sumMyPcs > 0) {
+                let totalDiff = sumMyPcs - sumMeanPcs;
+                if (Math.abs(totalDiff) > 4.50) {
+                    totalLabelClass = 'font-black text-red-600 uppercase tracking-widest text-right pr-6 py-3 flex items-center justify-end gap-2';
+                    totalLabelClass += `" ><span class="text-xl">🚩</span> TOTAL SCORE`;
+                } else {
+                    totalLabelClass += `" >TOTAL SCORE`;
+                }
+            } else {
+                totalLabelClass += `" >TOTAL SCORE`;
+            }
+
+            pcsHtml += `
+                <tr class="border-t-[4px] border-slate-700 bg-slate-200">
+                    <td class="${totalLabelClass.replace('TOTAL SCORE', '')}">
+                        ${totalLabelClass.includes('🚩') ? '<span class="text-xl">🚩</span> TOTAL SCORE' : 'TOTAL SCORE'}
+                    </td>
+                    <td class="bg-self py-3">${sumMyPcs > 0 ? sumMyPcs.toFixed(2) : '-'}</td>
+                    ${totalJudgeTds}
+                    <td class="font-black text-blue-900 text-lg py-3 bg-blue-100/50">${validMeanCount === 3 ? sumMeanPcs.toFixed(2) : '-'}</td>
+                </tr>
+            `;
+
             const skaterCard = document.createElement('div');
-            skaterCard.className = 'bg-white rounded-xl shadow border border-slate-200 overflow-hidden';
+            skaterCard.className = 'bg-white rounded-xl shadow-lg border border-slate-300 overflow-hidden w-full';
             skaterCard.innerHTML = `
-                <div class="bg-blue-800 text-white p-4 flex justify-between items-end">
+                <div class="bg-slate-800 text-white p-5 flex justify-between items-end border-b-4 border-blue-500">
                     <div>
-                        <div class="text-blue-200 text-xs font-bold uppercase tracking-widest mb-1">${data.tier || ''}</div>
-                        <div class="text-2xl font-black">#${data.stn || '-'} ${data.skater}</div>
+                        <div class="text-blue-300 text-sm font-bold uppercase tracking-widest mb-1">${data.tier || 'Event'} | ${data.competition}</div>
+                        <div class="text-3xl font-black">#${data.stn || '-'} ${data.skater}</div>
                     </div>
-                    <div class="text-xl font-bold text-blue-300">${data.noc || '---'}</div>
+                    <div class="text-2xl font-black text-slate-400">${data.noc || '---'}</div>
                 </div>
-                <div class="p-4 space-y-6">
-                    <table class="stat-table">
-                        <thead>
-                            <tr>
-                                <th width="4%">#</th><th width="20%" class="text-left">Executed Element</th><th width="4%">Fall</th><th width="6%">Info</th>
-                                <th width="6%">My EV</th><th width="15%">Official EVs</th>
-                                <th width="6%">Low</th><th width="6%">High</th><th width="6%" class="text-blue-700">Mean</th>
-                            </tr>
-                        </thead>
-                        <tbody>${tesHtml}</tbody>
-                    </table>
-                    <table class="stat-table">
-                        <thead>
-                            <tr>
-                                <th width="40%" class="text-left">Program Components</th>
-                                <th width="10%">My EV</th><th width="15%">Official EVs</th>
-                                <th width="6%">Low</th><th width="6%">High</th><th width="6%" class="text-blue-700">Mean</th>
-                            </tr>
-                        </thead>
-                        <tbody>${pcsHtml}</tbody>
-                    </table>
+                <div class="p-6 space-y-8">
+                    <div class="rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+                        <table class="stat-table">
+                            <thead>
+                                <tr>
+                                    <th width="4%">#</th><th width="24%" class="text-left pl-4">Executed Element</th>
+                                    <th width="4%">Fall</th><th width="6%">Info</th>
+                                    <th width="6%" class="text-indigo-700 bg-indigo-50">My EV</th>
+                                    ${judgeHeaders}
+                                    <th width="8%" class="text-blue-700 bg-blue-50">Mean</th>
+                                </tr>
+                            </thead>
+                            <tbody>${tesHtml}</tbody>
+                        </table>
+                    </div>
+                    <div class="rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+                        <table class="stat-table">
+                            <thead>
+                                <tr>
+                                    <th width="44%" class="text-left pl-4">Program Components</th>
+                                    <th width="6%" class="text-indigo-700 bg-indigo-50">My EV</th>
+                                    ${judgeHeaders}
+                                    <th width="8%" class="text-blue-700 bg-blue-50">Mean</th>
+                                </tr>
+                            </thead>
+                            <tbody>${pcsHtml}</tbody>
+                        </table>
+                    </div>
                 </div>
             `;
             container.appendChild(skaterCard);
         });
     }
 
-    window.onload = loadCompetitions;
+    // 啟動時背景載入資料
+    window.onload = loadAllData;
 </script>
 </body>
 </html>
