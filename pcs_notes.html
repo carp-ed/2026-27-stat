@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>PCS 深度剖析與筆記 (PCS Notes)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    
+    .pcs-table { width: 100%; border-collapse: collapse; background: white; }
+    .pcs-table th { background-color: #f8fafc; color: #334155; font-weight: 800; text-align: left; padding: 12px 16px; border-bottom: 2px solid #cbd5e1; }
+    .pcs-table td { border-bottom: 1px solid #e2e8f0; padding: 8px 16px; vertical-align: middle; }
+    
+    .row-component { border-top: 3px solid #cbd5e1; background-color: #f8fafc; }
+    .row-component td { padding: 12px 16px; }
+    
+    .criteria-input {
+        width: 100%; border: 1px solid transparent; outline: none; background: transparent; 
+        padding: 6px 10px; color: #334155; font-size: 13px; transition: all 0.2s; border-radius: 6px;
+    }
+    .criteria-input:hover { border: 1px solid #e2e8f0; }
+    .criteria-input:focus {
+        background-color: #fff; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6;
+    }
+    .input-wrapper { padding: 4px !important; }
+  </style>
+</head>
+<body class="p-6 h-screen flex flex-col box-border">
+
+  <h1 class="text-3xl font-bold text-center text-blue-900 mb-6 flex items-center justify-center gap-3 shrink-0">
+      <span class="text-4xl">💡</span> PCS 深度剖析與筆記 (Criteria Notes)
+  </h1>
+
+  <!-- 瘦身：移除 grid 佈局，直接滿版滿寬 -->
+  <div class="flex-1 overflow-hidden w-full relative flex flex-col">
+        
+    <!-- 頂部工具列 (選擇選手 & 儲存按鈕) -->
+    <div class="bg-white p-5 rounded-xl shadow border border-slate-200 flex justify-between items-center z-20 mb-6 shrink-0 w-full">
+        <div class="flex items-center gap-4 w-1/2">
+            <span class="font-bold text-slate-500 whitespace-nowrap">選擇選手：</span>
+            <!-- 這個下拉選單會根據 Global Comp 的廣播自動更新 -->
+            <select id="skater-select" class="w-full p-2 border border-slate-300 rounded-lg bg-slate-50 outline-none focus:border-blue-500 font-bold text-slate-700" onchange="selectSkater(this.value)" disabled>
+                <option value="">-- 請先從左上方選擇賽事 --</option>
+            </select>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <span id="save-status" class="text-amber-500 font-bold opacity-0 transition-opacity">● 尚未儲存</span>
+            <button onclick="savePcsNotes()" class="bg-blue-600 text-white hover:bg-blue-700 px-6 py-2.5 rounded-lg font-bold shadow-md transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50" id="save-btn" disabled>
+                <span>💾</span> 儲存本頁筆記
+            </button>
+        </div>
+    </div>
+
+    <!-- PCS 表格編輯區 -->
+    <div class="flex-1 overflow-y-auto hide-scrollbar pb-10 w-full pr-2">
+        <div id="pcs-editor-container">
+            <div class="bg-white p-12 rounded-xl shadow border border-slate-200 text-center flex flex-col items-center justify-center mt-10">
+                <span class="text-5xl mb-4 text-slate-300">📝</span>
+                <h3 class="text-xl font-bold text-slate-600 mb-1">等待接收賽事指令中...</h3>
+                <p class="text-slate-400">請從左上方「Global Event Select」選擇賽事，然後在此挑選選手</p>
+            </div>
+        </div>
+    </div>
+  </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+      authDomain: "project-6981083948742415857.firebaseapp.com",
+      projectId: "project-6981083948742415857",
+      storageBucket: "project-6981083948742415857.firebasestorage.app",
+      messagingSenderId: "708190565768",
+      appId: "1:708190565768:web:00658fdeff9cf79341763d",
+      measurementId: "G-MHC2PZ27D8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const pcsCriteriaDict = {
+      composition: ["Multidimensional use of space and design of movements", "Connections between and within elements", "Choreography reflecting musical phrase and form", "Pattern and ice coverage", "Unity"],
+      presentation: ["Expressiveness & projection", "Variety and contrast of energy and of movements", "Musical sensitivity and timing", "Oneness and awareness of space"],
+      skatingSkills: ["Variety of edges, steps, turns, movements and directions", "Clarity of edges, steps, turns, movements and body control", "Balance and glide", "Flow", "Power and speed", "Unison"]
+    };
+
+    const pcsLabels = {
+        composition: 'COMPOSITION',
+        presentation: 'PRESENTATION',
+        skatingSkills: 'SKATING SKILLS'
+    };
+
+    let rawSkatersData = [];
+    let groupedByComp = {};
+    let currentSkaterId = null;
+    
+    // 廣播時差處理
+    let isDataLoaded = false;
+    let pendingComp = null;
+
+    let currentPcsNotes = { composition: {}, presentation: {}, skatingSkills: {} };
+
+    // 背景載入資料
+    async function loadAllData() {
+        try {
+            const querySnapshot = await getDocs(collection(db, "scores"));
+            rawSkatersData = [];
+            groupedByComp = {};
+
+            querySnapshot.forEach((docSnap) => {
+                const sData = docSnap.data();
+                sData.id = docSnap.id;
+                rawSkatersData.push(sData);
+                const comp = sData.competition || "Unknown";
+                if (!groupedByComp[comp]) groupedByComp[comp] = [];
+                groupedByComp[comp].push(sData);
+            });
+
+            for (const comp in groupedByComp) {
+                groupedByComp[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
+            }
+
+            isDataLoaded = true;
+            if (pendingComp) {
+                populateSkaterSelect(pendingComp);
+                pendingComp = null;
+            }
+        } catch (e) {
+            console.error("載入失敗", e);
+        }
+    }
+
+    // 【新增】監聽來自 index.html 的跨網頁廣播
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'GLOBAL_COMP_SELECTED') {
+            const selectedComp = event.data.comp;
+            if (isDataLoaded) {
+                populateSkaterSelect(selectedComp);
+            } else {
+                pendingComp = selectedComp;
+                const skSelect = document.getElementById('skater-select');
+                skSelect.innerHTML = '<option value="">-- 資料載入中，請稍候... --</option>';
+            }
+        }
+    });
+
+    function populateSkaterSelect(comp) {
+        const skSelect = document.getElementById('skater-select');
+        skSelect.innerHTML = '<option value="">-- 請選擇選手 --</option>';
+        skSelect.disabled = false;
+        
+        const skaters = groupedByComp[comp] || [];
+        skaters.forEach(s => {
+            skSelect.innerHTML += `<option value="${s.id}">#${s.stn || '-'} ${s.skater}</option>`;
+        });
+
+        currentSkaterId = null;
+        document.getElementById('save-btn').disabled = true;
+        document.getElementById('pcs-editor-container').innerHTML = `
+            <div class="bg-white p-12 rounded-xl shadow border border-slate-200 text-center mt-10">
+                <p class="text-slate-500 font-bold text-lg">👉 請從上方下拉選單選擇一名選手</p>
+            </div>
+        `;
+    }
+
+    window.selectSkater = function(skaterId) {
+        currentSkaterId = skaterId;
+        if (!skaterId) {
+            document.getElementById('save-btn').disabled = true;
+            return;
+        }
+
+        const skater = rawSkatersData.find(s => s.id === skaterId);
+        
+        currentPcsNotes = {
+            composition: { ...((skater.pcs_criteria_notes || {}).composition || {}) },
+            presentation: { ...((skater.pcs_criteria_notes || {}).presentation || {}) },
+            skatingSkills: { ...((skater.pcs_criteria_notes || {}).skatingSkills || {}) }
+        };
+
+        renderPcsTable(skater);
+        document.getElementById('save-btn').disabled = false;
+        hideUnsavedIndicator();
+    }
+
+    function renderPcsTable(skater) {
+        const container = document.getElementById('pcs-editor-container');
+        
+        let html = `
+            <div class="bg-white rounded-xl shadow border border-slate-300 overflow-hidden">
+                <table class="pcs-table">
+                    <thead>
+                        <tr>
+                            <th width="45%">Component / Criteria</th>
+                            <th width="10%" class="text-center text-blue-700">X (My)</th>
+                            <th width="45%">📝 每一個細項，這裡手動輸入</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        const keys = ['composition', 'presentation', 'skatingSkills'];
+
+        keys.forEach(key => {
+            let myTotal = parseFloat((skater.pcs || {})[key] || 0);
+            html += `
+                <tr class="row-component">
+                    <td class="font-black tracking-widest text-slate-800">${pcsLabels[key]}</td>
+                    <td class="font-black text-center text-blue-700 text-lg">${myTotal > 0 ? myTotal.toFixed(2) : '-'}</td>
+                    <td></td>
+                </tr>
+            `;
+
+            pcsCriteriaDict[key].forEach((critText, cIdx) => {
+                let cVal = (skater.pcs_criteria && skater.pcs_criteria[key]) ? skater.pcs_criteria[key][cIdx] : null;
+                let displayVal = (cVal && parseFloat(cVal) > 0) ? parseFloat(cVal).toFixed(2) : '--';
+                let existingNote = currentPcsNotes[key][cIdx] || '';
+
+                html += `
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        <td class="text-slate-600 text-sm italic pl-6">• ${critText}</td>
+                        <td class="font-bold text-center text-green-700 text-sm">${displayVal}</td>
+                        <td class="input-wrapper">
+                            <input type="text" class="criteria-input" 
+                                placeholder="新增筆記..." 
+                                value="${existingNote}"
+                                oninput="updateNote('${key}', ${cIdx}, this.value)"
+                            >
+                        </td>
+                    </tr>
+                `;
+            });
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        container.innerHTML = html;
+    }
+
+    window.updateNote = function(componentKey, criteriaIndex, value) {
+        currentPcsNotes[componentKey][criteriaIndex] = value;
+        showUnsavedIndicator();
+    }
+
+    function showUnsavedIndicator() {
+        const indicator = document.getElementById('save-status');
+        indicator.innerText = '● 內容已變更，尚未儲存';
+        indicator.className = 'text-amber-500 font-bold opacity-100 transition-opacity';
+    }
+
+    function hideUnsavedIndicator() {
+        const indicator = document.getElementById('save-status');
+        indicator.innerText = '✓ 已儲存';
+        indicator.className = 'text-green-500 font-bold opacity-100 transition-opacity';
+        setTimeout(() => { indicator.style.opacity = '0'; }, 3000); 
+    }
+
+    window.savePcsNotes = async function() {
+        if (!currentSkaterId) return;
+
+        const btn = document.getElementById('save-btn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '⏳ 儲存中...'; btn.disabled = true;
+
+        try {
+            const cleanedNotes = { composition: {}, presentation: {}, skatingSkills: {} };
+            ['composition', 'presentation', 'skatingSkills'].forEach(key => {
+                for (const idx in currentPcsNotes[key]) {
+                    if (currentPcsNotes[key][idx].trim() !== '') {
+                        cleanedNotes[key][idx] = currentPcsNotes[key][idx].trim();
+                    }
+                }
+            });
+
+            await setDoc(doc(db, "scores", currentSkaterId), { pcs_criteria_notes: cleanedNotes }, { merge: true });
+            
+            const skaterIndex = rawSkatersData.findIndex(s => s.id === currentSkaterId);
+            if(skaterIndex > -1) rawSkatersData[skaterIndex].pcs_criteria_notes = cleanedNotes;
+
+            hideUnsavedIndicator();
+        } catch (e) {
+            alert('儲存失敗，請檢查網路連線！');
+        } finally {
+            btn.innerHTML = originalText; btn.disabled = false;
+        }
+    }
+
+    window.onload = loadAllData;
+</script>
+</body>
+</html>
