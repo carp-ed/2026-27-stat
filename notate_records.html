@@ -8,9 +8,6 @@
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
-    .list-item { cursor: pointer; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: all 0.2s; border-left: 4px solid transparent; font-weight: 600; color: #64748b; margin-bottom: 0.25rem;}
-    .list-item:hover { background-color: #f1f5f9; color: #334155; }
-    .list-item-active { background-color: #f3e8ff; border-left: 4px solid #8b5cf6; color: #6d28d9; }
     
     .stat-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; }
     .stat-table th, .stat-table td { border: 1px solid #e2e8f0; padding: 6px; }
@@ -36,21 +33,14 @@
       <span class="text-4xl">✍️</span> Tech Panel Notation
   </h1>
 
-  <div class="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
-    <!-- 左側邊欄：賽事清單 -->
-    <div class="col-span-3 bg-white p-4 rounded-xl shadow hide-scrollbar overflow-y-auto h-full">
-      <div class="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
-        <h2 class="text-lg font-bold text-purple-700">Competitions</h2>
+  <!-- 瘦身：移除 grid 佈局，直接滿版滿寬 -->
+  <div class="flex-1 overflow-hidden w-full relative">
+    <!-- 右側連貫編輯區 (變為滿版) -->
+    <div id="right-content-container" class="w-full hide-scrollbar overflow-y-auto h-full pr-2 pb-32">
+      <div id="intro-banner" class="bg-white p-8 rounded-xl shadow border border-slate-200 text-center text-slate-500 font-medium text-lg max-w-2xl mx-auto mt-20">
+        👆 請從左上方「Global Event Select」選擇一場賽事，以批次審核成績 (支援 Excel 整列貼上)
       </div>
-      <ul id="comp-list" class="space-y-1"><div class="text-slate-400 text-sm">載入中...</div></ul>
-    </div>
-
-    <!-- 右側連貫編輯區 -->
-    <div id="right-content-container" class="col-span-9 hide-scrollbar overflow-y-auto h-full pr-2 pb-32">
-      <div id="intro-banner" class="bg-white p-6 rounded-xl shadow text-center text-slate-500 font-medium">
-        請從左側選擇一場賽事，以批次審核所有選手成績 (支援 Excel 整列貼上)
-      </div>
-      <div id="batch-container" class="space-y-8" style="display: none;"></div>
+      <div id="batch-container" class="space-y-8 w-full" style="display: none;"></div>
     </div>
   </div>
 
@@ -59,19 +49,24 @@
     import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
-  apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
-  authDomain: "project-6981083948742415857.firebaseapp.com",
-  projectId: "project-6981083948742415857",
-  storageBucket: "project-6981083948742415857.firebasestorage.app",
-  messagingSenderId: "708190565768",
-  appId: "1:708190565768:web:00658fdeff9cf79341763d",
-  measurementId: "G-MHC2PZ27D8"
+      apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+      authDomain: "project-6981083948742415857.firebaseapp.com",
+      projectId: "project-6981083948742415857",
+      storageBucket: "project-6981083948742415857.firebasestorage.app",
+      messagingSenderId: "708190565768",
+      appId: "1:708190565768:web:00658fdeff9cf79341763d",
+      measurementId: "G-MHC2PZ27D8"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
     let currentSkatersData = [];
+    
+    // 【新增】連動與資料預載變數
+    let groupedByComp = {};
+    let isDataLoaded = false;
+    let pendingComp = null;
 
     function calcStats(numArray) {
         if (!numArray || numArray.length === 0) return { mean: '' };
@@ -110,51 +105,59 @@
         skater.elements[idx].fall = document.getElementById(`fall-${skaterId}-${idx}`).checked;
     }
 
-    // === 【新增】刪除選手資料功能 ===
     window.deleteSkaterRecord = async function(skaterId) {
         if (confirm("⚠️ 警告：確定要從雲端徹底刪除這名選手的資料嗎？此動作無法復原！")) {
             try {
                 await deleteDoc(doc(db, "scores", skaterId));
                 alert('✅ 刪除成功！');
-                
-                // 從畫面記憶體中移除該選手
                 currentSkatersData = currentSkatersData.filter(s => s.id !== skaterId);
-                
-                // 重新渲染畫面
                 renderBatchNotate(currentSkatersData);
-                // 同步重整左側清單的數量
-                loadCompetitions();
+                // 注意：刪除後這裡不再呼叫 loadCompetitions()，而是讓使用者自行決定是否重新載入或重整
             } catch (e) { 
                 alert('刪除失敗，請檢查網路連線！'); 
             }
         }
     };
 
-    async function loadCompetitions() {
-        const querySnapshot = await getDocs(collection(db, "scores"));
-        const grouped = {};
-        querySnapshot.forEach((doc) => {
-            const d = doc.data();
-            const comp = d.competition || "Unknown";
-            if (!grouped[comp]) grouped[comp] = [];
-            grouped[comp].push({ id: doc.id, ...d });
-        });
+    // 背景載入所有資料
+    async function loadAllData() {
+        try {
+            const querySnapshot = await getDocs(collection(db, "scores"));
+            groupedByComp = {};
+            querySnapshot.forEach((doc) => {
+                const d = doc.data();
+                const comp = d.competition || "Unknown";
+                if (!groupedByComp[comp]) groupedByComp[comp] = [];
+                groupedByComp[comp].push({ id: doc.id, ...d });
+            });
 
-        const container = document.getElementById('comp-list');
-        container.innerHTML = '';
-        for (const comp in grouped) {
-            grouped[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
-            const li = document.createElement('li');
-            li.className = 'list-item';
-            li.innerHTML = `<span>${comp}</span><br><span class="text-[10px] text-slate-400 font-normal">(${grouped[comp].length} Skaters)</span>`;
-            li.onclick = () => {
-                document.querySelectorAll('.list-item').forEach(el => el.classList.remove('list-item-active'));
-                li.classList.add('list-item-active');
-                renderBatchNotate(grouped[comp]);
-            };
-            container.appendChild(li);
+            for (const comp in groupedByComp) {
+                groupedByComp[comp].sort((a, b) => (parseInt(a.stn) || 999) - (parseInt(b.stn) || 999));
+            }
+
+            isDataLoaded = true;
+            // 若廣播先到，現在補渲染
+            if (pendingComp) {
+                renderBatchNotate(groupedByComp[pendingComp] || []);
+                pendingComp = null;
+            }
+        } catch (error) {
+            console.error("載入失敗:", error);
         }
     }
+
+    // 【新增】監聽來自 index.html 的跨網頁廣播
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'GLOBAL_COMP_SELECTED') {
+            const selectedComp = event.data.comp;
+            if (isDataLoaded) {
+                renderBatchNotate(groupedByComp[selectedComp] || []);
+            } else {
+                pendingComp = selectedComp;
+                document.getElementById('intro-banner').innerText = "資料載入中，請稍候...";
+            }
+        }
+    });
 
     function renderBatchNotate(skatersArray) {
         currentSkatersData = skatersArray;
@@ -163,10 +166,9 @@
         container.innerHTML = '';
         container.style.display = 'block';
         
-        // 如果這個賽事已經沒有選手了，就隱藏儲存按鈕
         if (skatersArray.length === 0) {
             document.getElementById('floating-save-btn').style.display = 'none';
-            container.innerHTML = '<div class="text-center text-slate-400 mt-10">此賽事目前無選手資料。</div>';
+            container.innerHTML = '<div class="text-center text-slate-500 font-bold p-10 bg-white rounded-xl shadow border">該賽事目前無選手資料。</div>';
             return;
         }
 
@@ -220,7 +222,6 @@
             const skaterCard = document.createElement('div');
             skaterCard.className = 'bg-white rounded-xl shadow border border-purple-200 overflow-hidden';
             
-            // 【修改重點】標頭加入 STN 編輯框與刪除按鈕
             skaterCard.innerHTML = `
                 <div class="bg-purple-50 p-4 border-b border-purple-200 flex justify-between items-end flex-wrap gap-4">
                     <div>
@@ -299,7 +300,6 @@
         }
     });
 
-    // 批次儲存至 Firebase
     window.saveAllNotations = async function() {
         const btn = document.getElementById('floating-save-btn');
         btn.innerHTML = '⏳ 儲存中...';
@@ -309,7 +309,6 @@
             await Promise.all(currentSkatersData.map(async (skater) => {
                 const sid = skater.id;
                 
-                // 【修改重點】儲存時抓取 STN 的輸入值
                 skater.stn = document.getElementById(`edit-skater-stn-${sid}`).value;
                 skater.skater = document.getElementById(`edit-skater-name-${sid}`).value;
                 skater.noc = document.getElementById(`edit-skater-noc-${sid}`).value;
@@ -338,15 +337,15 @@
             btn.innerHTML = '💾 儲存全場變更';
             btn.classList.remove('opacity-75');
             
-            // 重整一次側邊欄（因為 STN 排序可能改變）
-            loadCompetitions();
+            // 儲存完不重抓整包資料，維持現狀以保持流暢體驗
         } catch (e) { 
             alert('儲存失敗，請確認網路連線！'); 
             btn.innerHTML = '💾 儲存全場變更';
         }
     }
 
-    window.onload = loadCompetitions;
+    // 啟動時就在背景預載資料
+    window.onload = loadAllData;
 </script>
 </body>
 </html>
