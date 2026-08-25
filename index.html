@@ -12,7 +12,6 @@
         .nav-item-active { background-color: #eff6ff; color: #1d4ed8; border-right: 4px solid #2563eb; font-weight: bold; }
         .nav-item:hover:not(.nav-item-active) { background-color: #f8fafc; }
         
-        /* 新增：左邊欄收合動畫 CSS */
         #sidebar {
             transition: width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
             overflow-x: hidden;
@@ -25,9 +24,16 @@
             border: none !important;
             opacity: 0;
         }
+
+        /* 搜尋下拉選單的卷軸美化 */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body>
+    <!-- 登入頁面 -->
     <div id="view-login" class="h-full w-full flex items-center justify-center bg-slate-900">
         <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md">
             <div class="text-center mb-8">
@@ -41,6 +47,7 @@
         </div>
     </div>
 
+    <!-- 主選單 -->
     <div id="view-main-menu" class="h-full w-full flex flex-col items-center justify-center hidden-view relative">
         <button onclick="handleLogout()" class="absolute top-6 right-6 text-slate-500 hover:text-slate-800 font-bold flex items-center gap-2"><span>🚪</span> 登出系統</button>
         <h2 class="text-4xl font-black text-slate-800 mb-12 tracking-wider">主選單 (MAIN MENU)</h2>
@@ -58,12 +65,12 @@
         </div>
     </div>
 
+    <!-- 後台儀表板 -->
     <div id="view-dashboard" class="h-full w-full flex flex-col hidden-view">
         <div class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 shadow-sm z-10">
             <div class="flex items-center gap-3">
                 <button onclick="showMainMenu()" class="text-slate-500 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-3 py-1.5 rounded-md font-bold text-sm transition-colors flex items-center gap-1"><span>◀</span> 返回主選單</button>
                 <div class="w-px h-6 bg-slate-300 mx-2"></div>
-                <!-- 新增：控制收合的漢堡按鈕 -->
                 <button onclick="toggleSidebar()" class="text-slate-500 hover:text-blue-600 p-1 rounded focus:outline-none flex items-center transition-colors mr-1">
                     <span class="text-2xl leading-none">☰</span>
                 </button>
@@ -73,22 +80,38 @@
         </div>
 
         <div class="flex-1 flex overflow-hidden">
-            <!-- 新增 id="sidebar" 以供 JS 操控 -->
-            <div id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col py-4 shrink-0 overflow-y-auto">
-                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mb-2">一、 資料與審核</div>
+            <!-- 左側邊欄 -->
+            <div id="sidebar" class="w-72 bg-white border-r border-slate-200 flex flex-col py-4 shrink-0 overflow-y-auto">
+                
+                <!-- 【新增功能】全局賽事搜尋下拉選單 -->
+                <div class="px-6 mb-6 relative" id="global-comp-container">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Global Event Select</label>
+                    <div class="relative">
+                        <input type="text" id="global-comp-search" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-bold text-slate-700 transition-all shadow-sm" placeholder="🔍 搜尋或選擇賽事..." onfocus="showCompDropdown()" oninput="filterComps()">
+                        
+                        <div id="global-comp-dropdown" class="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-xl mt-1 hidden max-h-60 overflow-y-auto custom-scrollbar">
+                            <div class="p-4 text-center text-sm text-slate-400">資料讀取中...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-6 mb-2">一、 資料與審核</div>
                 <div class="nav-item nav-item-active px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('notate_records.html', this)"><span class="text-xl">✍️</span> <span>Notate (技術台)</span></div>
                 <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('view_records_page.html', this)"><span class="text-xl">📄</span> <span>View (歷史檢閱)</span></div>
 
-                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mt-6 mb-2">二、 分析與檢討</div>
-                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('flagged_notes.html', this)"><span class="text-xl">🚨</span> <span>Flag (異常標記)</span></div>
-                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('oac_analysis.html', this)"><span class="text-xl">📈</span> <span>PCS (OAC分析)</span></div>
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-6 mt-6 mb-2">二、 分析與檢討</div>
+                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('flagged_notes.html', this)"><span class="text-xl">🚨</span> <span>Flagged Notes</span></div>
+                <!-- 補上剛剛新增的 PCS Notes -->
+                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('pcs_notes.html', this)"><span class="text-xl">💡</span> <span>PCS Notes</span></div>
 
-                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest px-6 mt-6 mb-2">三、 輸出與報表</div>
-                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('print_report.html', this)"><span class="text-xl">🖨️</span> <span>Print (產出分析PDF)</span></div>
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-6 mt-6 mb-2">三、 輸出與報表</div>
+                <div class="nav-item px-6 py-3 text-slate-600 flex items-center gap-3" onclick="loadIframe('print_report.html', this)"><span class="text-xl">🖨️</span> <span>Print (產出報表)</span></div>
             </div>
 
+            <!-- 右側內容區 -->
             <div class="flex-1 bg-slate-100 relative">
-                <iframe id="content-frame" src="notate_records.html" class="w-full h-full border-0"></iframe>
+                <!-- 載入成功時自動觸發廣播機制 -->
+                <iframe id="content-frame" src="notate_records.html" class="w-full h-full border-0" onload="broadcastComp()"></iframe>
             </div>
         </div>
     </div>
@@ -96,6 +119,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+        // 新增引入 Firestore 功能
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
@@ -108,14 +133,21 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        const db = getFirestore(app); // 初始化資料庫
 
         const viewLogin = document.getElementById('view-login');
         const viewMainMenu = document.getElementById('view-main-menu');
         const viewDashboard = document.getElementById('view-dashboard');
         const errorMsg = document.getElementById('login-error');
 
+        // === 全局賽事連動變數 ===
+        let globalComps = [];
+        let currentGlobalComp = "";
+
         window.onload = () => { 
-            if (sessionStorage.getItem('portal_logged_in') === 'true') window.showMainMenu(); 
+            if (sessionStorage.getItem('portal_logged_in') === 'true') {
+                window.showMainMenu();
+            }
         };
 
         window.handleLogin = async function() {
@@ -148,6 +180,8 @@
         window.showDashboard = function() {
             viewMainMenu.classList.add('hidden-view');
             viewDashboard.classList.remove('hidden-view');
+            // 進入後台時，背景自動抓取賽事清單
+            fetchGlobalComps();
         }
 
         window.goToScoring = function() { 
@@ -160,10 +194,92 @@
             if(clickedElement) clickedElement.classList.add('nav-item-active');
         }
 
-        // 新增：切換左側邊欄的函數
         window.toggleSidebar = function() {
             document.getElementById('sidebar').classList.toggle('sidebar-collapsed');
         }
+
+        // ==========================================
+        // 【核心邏輯】全局賽事搜尋與跨網頁通訊
+        // ==========================================
+        
+        async function fetchGlobalComps() {
+            try {
+                const querySnapshot = await getDocs(collection(db, "scores"));
+                const compSet = new Set();
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.competition) compSet.add(data.competition);
+                });
+                // 整理並排序賽事名稱
+                globalComps = Array.from(compSet).sort();
+                renderGlobalComps(globalComps);
+            } catch (e) {
+                console.error("無法取得賽事清單:", e);
+                document.getElementById('global-comp-dropdown').innerHTML = '<div class="p-3 text-sm text-red-500">無法載入資料</div>';
+            }
+        }
+
+        function renderGlobalComps(comps) {
+            const dropdown = document.getElementById('global-comp-dropdown');
+            dropdown.innerHTML = '';
+            
+            if (comps.length === 0) {
+                dropdown.innerHTML = '<div class="p-3 text-sm text-slate-400 text-center">無相符賽事</div>';
+                return;
+            }
+            
+            comps.forEach(comp => {
+                const div = document.createElement('div');
+                div.className = 'px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer font-bold border-b border-slate-100 last:border-0 transition-colors';
+                div.innerText = comp;
+                div.onclick = () => { selectGlobalComp(comp); };
+                dropdown.appendChild(div);
+            });
+        }
+
+        window.filterComps = function() {
+            const text = document.getElementById('global-comp-search').value.toLowerCase();
+            const filtered = globalComps.filter(c => c.toLowerCase().includes(text));
+            renderGlobalComps(filtered);
+            document.getElementById('global-comp-dropdown').classList.remove('hidden');
+        }
+
+        window.showCompDropdown = function() {
+            document.getElementById('global-comp-dropdown').classList.remove('hidden');
+            window.filterComps(); 
+        }
+
+        // 當使用者選定賽事時
+        window.selectGlobalComp = function(comp) {
+            currentGlobalComp = comp;
+            const searchInput = document.getElementById('global-comp-search');
+            searchInput.value = comp;
+            searchInput.blur();
+            document.getElementById('global-comp-dropdown').classList.add('hidden');
+            
+            // 執行廣播
+            window.broadcastComp();
+        }
+
+        // 發送 postMessage 給 iframe
+        window.broadcastComp = function() {
+            if (!currentGlobalComp) return;
+            const iframe = document.getElementById('content-frame');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ 
+                    type: 'GLOBAL_COMP_SELECTED', 
+                    comp: currentGlobalComp 
+                }, '*');
+            }
+        }
+
+        // 點擊外部隱藏下拉選單
+        document.addEventListener('click', (e) => {
+            const container = document.getElementById('global-comp-container');
+            if (container && !container.contains(e.target)) {
+                document.getElementById('global-comp-dropdown').classList.add('hidden');
+            }
+        });
     </script>
 </body>
 </html>
