@@ -10,62 +10,47 @@
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     .note-input { width: 100%; resize: vertical; min-height: 40px; }
-    
-    .list-item { cursor: pointer; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: all 0.2s; border-left: 4px solid transparent; font-weight: 600; color: #64748b; margin-bottom: 0.25rem;}
-    .list-item:hover { background-color: #f1f5f9; color: #334155; }
-    .list-item-active { background-color: #fef2f2; border-left: 4px solid #dc2626; color: #991b1b; }
   </style>
 </head>
-<body class="p-6">
+<body class="p-6 h-screen flex flex-col box-border">
 
-  <h1 class="text-3xl font-bold text-center text-red-800 mb-6 flex items-center justify-center gap-3">
+  <h1 class="text-3xl font-bold text-center text-red-800 mb-6 flex items-center justify-center gap-3 shrink-0">
       <span class="text-4xl">🚨</span> Flagged Review & Notes
   </h1>
 
-  <div class="grid grid-cols-12 gap-6">
+  <!-- 瘦身：移除 grid 佈局，直接滿版滿寬 -->
+  <div class="flex-1 overflow-hidden w-full relative flex flex-col">
     
-    <!-- 左側邊欄：選擇賽事 -->
-    <div class="col-span-3 bg-white p-4 rounded-xl shadow hide-scrollbar overflow-y-auto max-h-[85vh]">
-      <div class="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
-        <h2 class="text-lg font-semibold text-red-700">Competitions</h2>
-        <button onclick="loadFlaggedData()" class="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-md hover:bg-red-200 font-bold transition-colors">⟳ 刷新掃描</button>
-      </div>
-      <div id="comp-list" class="space-y-1">
-          <div class="text-slate-400 text-sm">載入中...</div>
-      </div>
+    <!-- 頂部工具列 -->
+    <div id="toolbar-banner" class="bg-white p-4 rounded-xl shadow flex justify-between items-center z-20 mb-6 shrink-0">
+        <div class="flex items-center gap-4">
+            <h2 id="current-comp-title" class="text-xl font-black text-slate-800 tracking-wide">👆 請從左上方選擇賽事</h2>
+            <button onclick="openStatsModal()" class="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-md hover:bg-blue-100 font-bold border border-blue-200 transition-colors flex items-center gap-1 shadow-sm">
+                <span>📊</span> OAC 異常比例
+            </button>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="loadFlaggedData()" class="text-sm bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 font-bold transition-colors">⟳ 刷新資料</button>
+            <button id="btn-add-manual" onclick="openManualModal()" class="hidden bg-white text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg font-bold shadow-sm border border-slate-300 transition-colors flex items-center gap-2">
+                <span class="text-lg leading-none">+</span> 自訂疑慮項目
+            </button>
+            <button onclick="saveAllNotes()" class="bg-red-600 text-white hover:bg-red-700 px-6 py-2 rounded-lg font-bold shadow-lg transition-transform active:scale-95 flex items-center gap-2">
+                <span>💾</span> 儲存註解
+            </button>
+        </div>
     </div>
 
-    <!-- 右側主內容：Flagged 項目 -->
-    <div class="col-span-9 flex flex-col gap-6 hide-scrollbar overflow-y-auto max-h-[85vh]">
-        
-        <!-- 右側工具列 (Toolbar) -->
-        <div id="toolbar-banner" class="bg-white p-4 rounded-xl shadow flex justify-between items-center sticky top-0 z-20">
-            <div class="flex items-center gap-4">
-                <h2 id="current-comp-title" class="text-xl font-black text-slate-800 tracking-wide">請從左側選擇賽事</h2>
-                <button onclick="openStatsModal()" class="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-md hover:bg-blue-100 font-bold border border-blue-200 transition-colors flex items-center gap-1 shadow-sm">
-                    <span>📊</span> OAC 異常比例
-                </button>
-            </div>
-            <div class="flex gap-3">
-                <button id="btn-add-manual" onclick="openManualModal()" class="hidden bg-white text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg font-bold shadow-sm border border-slate-300 transition-colors flex items-center gap-2">
-                    <span class="text-lg leading-none">+</span> 自訂疑慮項目
-                </button>
-                <button onclick="saveAllNotes()" class="bg-red-600 text-white hover:bg-red-700 px-6 py-2 rounded-lg font-bold shadow-lg transition-transform active:scale-95 flex items-center gap-2">
-                    <span>💾</span> 儲存註解
-                </button>
-            </div>
-        </div>
-
-        <!-- 檢討列表區塊 -->
-        <div id="flagged-list" class="flex flex-col gap-4 pb-10">
-            <div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 text-center text-slate-400">
-                請點選左側的賽事以檢視異常項目
+    <!-- 檢討列表區塊 -->
+    <div class="flex-1 overflow-y-auto hide-scrollbar pb-10 w-full pr-2">
+        <div id="flagged-list" class="flex flex-col gap-4">
+            <div class="bg-white p-8 rounded-xl shadow border border-slate-200 text-center text-slate-500 font-medium text-lg max-w-2xl mx-auto mt-10">
+                等待接收賽事指令中...
             </div>
         </div>
     </div>
   </div>
 
-  <!-- 【修改重點 1】OAC 統計報表彈窗，加入 Lack of Info 欄位 -->
+  <!-- OAC 統計報表彈窗 -->
   <div id="stats-modal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center backdrop-blur-sm">
       <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[80vh] flex flex-col overflow-hidden">
           <div class="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
@@ -106,9 +91,24 @@
                   <select id="manual-skater-select" class="w-full p-2 border rounded bg-white outline-none focus:border-red-400" onchange="updateManualItemSelect()"></select>
               </div>
               <div>
-                  <label class="block text-xs font-bold text-slate-500 mb-1">2. 選擇要釘選檢討的項目</label>
+                  <label class="block text-xs font-bold text-slate-500 mb-1">2. 選擇要釘選的動作/項目</label>
                   <select id="manual-item-select" class="w-full p-2 border rounded bg-white outline-none focus:border-red-400"></select>
               </div>
+              
+              <div>
+                  <label class="block text-xs font-bold text-slate-500 mb-1">3. 標記類型</label>
+                  <div class="flex gap-4 mt-1">
+                      <label class="flex-1 flex items-center justify-center gap-2 cursor-pointer bg-red-50 hover:bg-red-100 px-3 py-3 rounded-lg border border-red-200 transition-colors">
+                          <input type="radio" name="manual_type" value="flag" checked class="text-red-600 focus:ring-red-500 w-4 h-4 cursor-pointer">
+                          <span class="text-sm font-bold text-red-800">🚨 Flag (異常)</span>
+                      </label>
+                      <label class="flex-1 flex items-center justify-center gap-2 cursor-pointer bg-blue-50 hover:bg-blue-100 px-3 py-3 rounded-lg border border-blue-200 transition-colors">
+                          <input type="radio" name="manual_type" value="note" class="text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer">
+                          <span class="text-sm font-bold text-blue-800">📝 Note (筆記)</span>
+                      </label>
+                  </div>
+              </div>
+
               <button onclick="addManualFlag()" class="mt-4 w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg shadow-md transition-colors">📌 新增至列表</button>
           </div>
       </div>
@@ -119,24 +119,27 @@
     import { getFirestore, collection, getDocs, doc, setDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
-  apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
-  authDomain: "project-6981083948742415857.firebaseapp.com",
-  projectId: "project-6981083948742415857",
-  storageBucket: "project-6981083948742415857.firebasestorage.app",
-  messagingSenderId: "708190565768",
-  appId: "1:708190565768:web:00658fdeff9cf79341763d",
-  measurementId: "G-MHC2PZ27D8"
+      apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+      authDomain: "project-6981083948742415857.firebaseapp.com",
+      projectId: "project-6981083948742415857",
+      storageBucket: "project-6981083948742415857.firebasestorage.app",
+      messagingSenderId: "708190565768",
+      appId: "1:708190565768:web:00658fdeff9cf79341763d",
+      measurementId: "G-MHC2PZ27D8"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // 【修改重點 2】使用更穩定的全域變數架構來記錄每一個選手的完整狀態
     let globalSkaterUpdates = {}; 
     let globalDataByComp = {};
     let globalStats = {};
     let currentActiveComp = null;
     let rawSkatersData = [];
+    
+    // 廣播時差處理變數
+    let isDataLoaded = false;
+    let pendingComp = null;
 
     function calcStats(numArray) {
         if (!numArray || numArray.length === 0) return { mean: '' };
@@ -159,13 +162,11 @@
         return `<span class="text-red-600 font-bold">${currStr}</span>`;
     }
 
-    // 處理 Note 文字改變
     window.handleNoteChange = function(skaterId, key, value) {
         globalSkaterUpdates[skaterId].flag_notes[key] = value;
         globalSkaterUpdates[skaterId].isModified = true;
     }
 
-    // 處理 Lack of Info 打勾改變
     window.handleLackInfoChange = function(skaterId, key, isChecked) {
         const arr = globalSkaterUpdates[skaterId].lack_info_flags;
         if (isChecked) {
@@ -175,17 +176,28 @@
             if (index > -1) arr.splice(index, 1);
         }
         globalSkaterUpdates[skaterId].isModified = true;
-        
-        // 即時重算並更新報表，不用等存檔
         recalcStatsLocal();
     }
 
+    // 【新增】監聽來自 index.html 的跨網頁廣播
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'GLOBAL_COMP_SELECTED') {
+            const selectedComp = event.data.comp;
+            if (isDataLoaded) {
+                selectComp(selectedComp);
+            } else {
+                pendingComp = selectedComp;
+                document.getElementById('current-comp-title').innerText = "⏳ 載入資料中...";
+            }
+        }
+    });
+
     async function loadFlaggedData() {
-        document.getElementById('comp-list').innerHTML = '<div class="text-slate-400 text-sm">掃描中...</div>';
         document.getElementById('flagged-list').innerHTML = '<div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 text-center text-slate-400">正在分析分數與讀取自訂項目...</div>';
         
         globalSkaterUpdates = {};
         rawSkatersData = [];
+        isDataLoaded = false;
 
         try {
             const querySnapshot = await getDocs(collection(db, "scores"));
@@ -198,7 +210,6 @@
                 sData.id = skaterId;
                 rawSkatersData.push(sData);
 
-                // 初始化該名選手的記憶體狀態 (包含所有現有的 Notes 和 Lack info flags)
                 globalSkaterUpdates[skaterId] = {
                     flag_notes: sData.flag_notes || {},
                     lack_info_flags: sData.lack_info_flags || [],
@@ -216,14 +227,16 @@
                 const offStats = sData.official_stats || {};
                 const origElements = sData.original_elements || [];
                 const flagNotes = sData.flag_notes || {}; 
-                const manualFlags = sData.manual_flags || [];
+                const manualFlags = sData.manual_flags || []; 
+                const manualNotes = sData.manual_notes || []; 
                 const lackInfoFlags = sData.lack_info_flags || [];
 
-                // 檢查 Elements
                 (sData.elements || []).forEach((el, idx) => {
                     if (!el.name || el.name.trim() === '') return;
                     const noteKey = `elem_${idx}`;
-                    const isManual = manualFlags.includes(noteKey);
+                    
+                    const isManualFlag = manualFlags.includes(noteKey);
+                    const isManualNote = manualNotes.includes(noteKey);
                     const isLackInfo = lackInfoFlags.includes(noteKey);
                     
                     const myEv = el.goe !== null ? parseFloat(el.goe) : 0;
@@ -238,7 +251,7 @@
                         if (Math.abs(diffVal) > 2.0) isFlagged = true;
                     }
 
-                    if (isFlagged || isManual) {
+                    if (isFlagged || isManualFlag || isManualNote) {
                         if (isFlagged) {
                             globalStats[comp].totalSystemFlags++;
                             if (isLackInfo) globalStats[comp].lackInfoCount++;
@@ -253,14 +266,14 @@
                             diff: st.mean !== '' ? (diffVal > 0 ? `+${diffVal}` : diffVal) : '-',
                             noteKey: noteKey,
                             existingNote: flagNotes[noteKey] || '',
-                            isManual: isManual,
                             isSystem: isFlagged,
+                            isManualFlag: isManualFlag,
+                            isManualNote: isManualNote,
                             isLackInfo: isLackInfo
                         });
                     }
                 });
 
-                // 檢查 PCS
                 const keys = ['composition', 'presentation', 'skatingSkills'];
                 let myTotal = 0, offTotal = 0;
                 let isOffPcsValid = false;
@@ -272,8 +285,10 @@
                 });
 
                 const pcsNoteKey = 'pcs_total';
-                const isPcsManual = manualFlags.includes(pcsNoteKey);
+                const isPcsManualFlag = manualFlags.includes(pcsNoteKey);
+                const isPcsManualNote = manualNotes.includes(pcsNoteKey);
                 const isPcsLackInfo = lackInfoFlags.includes(pcsNoteKey);
+                
                 let isPcsFlagged = false;
                 let pcsDiff = 0;
 
@@ -282,7 +297,7 @@
                     if (Math.abs(pcsDiff) > 4.5) isPcsFlagged = true;
                 }
 
-                if (isPcsFlagged || isPcsManual) {
+                if (isPcsFlagged || isPcsManualFlag || isPcsManualNote) {
                     if (isPcsFlagged) {
                         globalStats[comp].totalSystemFlags++;
                         if (isPcsLackInfo) globalStats[comp].lackInfoCount++;
@@ -294,25 +309,25 @@
                         myEv: myTotal.toFixed(2), offMean: isOffPcsValid ? offTotal.toFixed(2) : '-',
                         diff: isOffPcsValid ? (pcsDiff > 0 ? `+${pcsDiff}` : pcsDiff) : '-',
                         noteKey: pcsNoteKey, existingNote: flagNotes[pcsNoteKey] || '',
-                        isManual: isPcsManual, isSystem: isPcsFlagged,
+                        isSystem: isPcsFlagged, 
+                        isManualFlag: isPcsManualFlag, 
+                        isManualNote: isPcsManualNote,
                         isLackInfo: isPcsLackInfo
                     });
                 }
             });
 
-            const allComps = [...new Set(rawSkatersData.map(s => s.competition))];
-            allComps.forEach(c => {
-                if (!flaggedItemsByComp[c]) flaggedItemsByComp[c] = [];
-            });
-
             globalDataByComp = flaggedItemsByComp;
-            renderCompList();
-            renderStatsModal();
+            isDataLoaded = true;
 
-            if (currentActiveComp && globalDataByComp[currentActiveComp]) {
+            // 處理廣播時差
+            if (pendingComp) {
+                selectComp(pendingComp);
+                pendingComp = null;
+            } else if (currentActiveComp) {
                 selectComp(currentActiveComp);
             } else {
-                document.getElementById('flagged-list').innerHTML = '<div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 text-center text-slate-400">請從左側選擇賽事以檢視異常項目</div>';
+                document.getElementById('flagged-list').innerHTML = '<div class="bg-white p-8 rounded-xl shadow border border-slate-200 text-center text-slate-500 font-medium text-lg max-w-2xl mx-auto mt-10">👆 請從左上方「Global Event Select」選擇一場賽事</div>';
             }
 
         } catch (e) {
@@ -321,7 +336,6 @@
         }
     }
 
-    // --- 本地重算狀態 ---
     function recalcStatsLocal() {
         for(const comp in globalStats) {
             globalStats[comp].totalSystemFlags = 0;
@@ -333,7 +347,6 @@
             items.forEach(item => {
                 if (item.isSystem) {
                     globalStats[comp].totalSystemFlags++;
-                    // 檢查本地記憶體中的打勾狀態
                     if (globalSkaterUpdates[item.skaterId].lack_info_flags.includes(item.noteKey)) {
                         globalStats[comp].lackInfoCount++;
                     }
@@ -343,37 +356,10 @@
         renderStatsModal();
     }
 
-    function renderCompList() {
-        const container = document.getElementById('comp-list');
-        container.innerHTML = '';
-        const comps = Object.keys(globalDataByComp);
-        
-        if (comps.length === 0) {
-            container.innerHTML = '<div class="text-slate-400 text-sm">無資料</div>';
-            return;
-        }
-
-        comps.forEach(comp => {
-            const div = document.createElement('div');
-            div.className = `list-item ${currentActiveComp === comp ? 'list-item-active' : ''}`;
-            
-            const flagCount = globalDataByComp[comp].length;
-            let badge = '';
-            if (flagCount > 0) badge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full font-bold ml-2">${flagCount}</span>`;
-            
-            div.innerHTML = `<div class="flex justify-between items-center"><span class="truncate pr-2">${comp}</span>${badge}</div>`;
-            div.onclick = () => selectComp(comp);
-            container.appendChild(div);
-        });
-    }
-
     window.selectComp = function(comp) {
         currentActiveComp = comp;
-        renderCompList(); 
-        
         document.getElementById('current-comp-title').innerText = comp;
         document.getElementById('btn-add-manual').classList.remove('hidden');
-        
         renderFlaggedList();
     }
 
@@ -381,11 +367,11 @@
         const container = document.getElementById('flagged-list');
         container.innerHTML = '';
         
-        const items = globalDataByComp[currentActiveComp];
+        const items = globalDataByComp[currentActiveComp] || [];
 
-        if (!items || items.length === 0) {
+        if (items.length === 0) {
             container.innerHTML = `
-                <div class="bg-white p-12 rounded-xl shadow-sm border border-slate-200 text-center flex flex-col items-center justify-center">
+                <div class="bg-white p-12 rounded-xl shadow-sm border border-slate-200 text-center flex flex-col items-center justify-center mt-4">
                     <span class="text-5xl mb-4">🎉</span>
                     <h3 class="text-xl font-bold text-slate-700 mb-1">本場賽事無異常項目</h3>
                     <p class="text-slate-500 mb-6">所有的評分都與官方高度一致。</p>
@@ -398,11 +384,16 @@
             const card = document.createElement('div');
             card.className = 'bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row gap-6';
             
-            const badgeColor = item.type === 'TES' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-purple-100 text-purple-700 border-purple-200';
+            const badgeColor = item.type === 'TES' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-purple-100 text-purple-700 border-purple-200';
             
             let statusBadge = '';
-            if (item.isManual && !item.isSystem) statusBadge = `<span class="text-xs bg-slate-700 text-white px-2 py-0.5 rounded shadow-sm">📌 自訂項目</span>`;
-            else if (item.isManual && item.isSystem) statusBadge = `<span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded shadow-sm">🚨 系統異常 + 📌 釘選</span>`;
+            if (item.isSystem) {
+                if (item.isManualFlag) statusBadge = `<span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded shadow-sm">🚨 系統異常 + 📌 釘選 Flag</span>`;
+                else statusBadge = `<span class="text-xs bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded shadow-sm">🚨 系統異常</span>`;
+            } else {
+                if (item.isManualFlag) statusBadge = `<span class="text-xs bg-slate-700 text-white px-2 py-0.5 rounded shadow-sm">📌 自訂 Flag</span>`;
+                else if (item.isManualNote) statusBadge = `<span class="text-xs bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded shadow-sm">📝 純筆記 (Note)</span>`;
+            }
 
             card.innerHTML = `
                 <div class="lg:w-1/3 flex flex-col shrink-0 border-b lg:border-b-0 lg:border-r border-slate-100 pb-4 lg:pb-0 lg:pr-6">
@@ -429,7 +420,6 @@
                             <span class="text-green-500 opacity-0 transition-opacity font-bold" id="saved-tick-${item.skaterId}-${item.noteKey}">✓ 已編輯，待儲存</span>
                         </label>
                         
-                        <!-- 【修改重點 3】加入 Lack of TP Info 勾選框 -->
                         <label class="flex items-center gap-2 cursor-pointer bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded border border-amber-200 transition-colors shadow-sm">
                             <input type="checkbox" class="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
                                 ${item.isLackInfo ? 'checked' : ''}
@@ -439,6 +429,7 @@
                     </div>
                     
                     <textarea 
+                        id="note-input-${item.skaterId}-${item.noteKey}"
                         class="note-input flex-1 bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm focus:bg-white focus:border-red-400 focus:ring-4 focus:ring-red-400/10 outline-none transition-all" 
                         placeholder="在這裡寫下這個動作的檢討或備註..."
                         oninput="handleNoteChange('${item.skaterId}', '${item.noteKey}', this.value); document.getElementById('saved-tick-${item.skaterId}-${item.noteKey}').style.opacity = '1';"
@@ -449,9 +440,8 @@
         });
     }
 
-    // --- Modal 邏輯 ---
     window.openStatsModal = function() { 
-        recalcStatsLocal(); // 開啟前確保最新狀態
+        recalcStatsLocal(); 
         document.getElementById('stats-modal').classList.remove('hidden'); 
     }
     
@@ -461,7 +451,6 @@
         for(const comp in globalStats) {
             const data = globalStats[comp];
             
-            // 實作 ISU Rule 5.5 容許誤差邏輯
             let acceptableErrors = 1;
             if (data.skaters <= 10) acceptableErrors = 1;
             else if (data.skaters <= 20) acceptableErrors = 2;
@@ -469,10 +458,8 @@
             else if (data.skaters <= 40) acceptableErrors = 4;
             else if (data.skaters > 40) acceptableErrors = 5;
 
-            // 計算有效 Flag (系統異常 - 免責)
             const effectiveFlags = data.totalSystemFlags - data.lackInfoCount;
 
-            // 判斷 OAC 狀態
             let statusHtml = '<span class="text-green-600 font-bold">🟢 正常 (Normal)</span>';
             let effectiveTextClass = 'text-green-700';
 
@@ -493,9 +480,8 @@
         }
     }
 
-    // --- 手動釘選 (Manual Flag) 邏輯 ---
     window.openManualModal = function() {
-        if (!currentActiveComp) { alert("請先從左側選擇一場賽事！"); return; }
+        if (!currentActiveComp) { alert("請先從上方選擇一場賽事！"); return; }
         document.getElementById('manual-comp-display').innerText = `目前賽事：${currentActiveComp}`;
         
         const skSelect = document.getElementById('manual-skater-select');
@@ -513,32 +499,34 @@
     window.updateManualItemSelect = function() {
         const skaterId = document.getElementById('manual-skater-select').value;
         const itemSelect = document.getElementById('manual-item-select');
-        itemSelect.innerHTML = '<option value="">-- 選擇要釘選的項目 --</option>';
+        itemSelect.innerHTML = '<option value="">-- 選擇要釘選的動作/項目 --</option>';
         if(!skaterId) return;
 
         const skater = rawSkatersData.find(s => s.id === skaterId);
         (skater.elements || []).forEach((el, idx) => {
             if(el.name) itemSelect.innerHTML += `<option value="elem_${idx}">TES #${el.id || idx+1} : ${el.name}</option>`;
         });
-        itemSelect.innerHTML += `<option value="pcs_total">PCS : Program Components</option>`;
+        itemSelect.innerHTML += `<option value="pcs_total">PCS : Program Components (總和)</option>`;
     }
 
     window.addManualFlag = async function() {
         const skaterId = document.getElementById('manual-skater-select').value;
         const noteKey = document.getElementById('manual-item-select').value;
+        const manualType = document.querySelector('input[name="manual_type"]:checked').value;
+        
         if (!skaterId || !noteKey) { alert("請完整選擇選手與項目！"); return; }
 
         try {
-            await setDoc(doc(db, "scores", skaterId), { manual_flags: arrayUnion(noteKey) }, { merge: true });
-            alert('📌 成功加入自訂項目！');
+            const targetField = manualType === 'flag' ? 'manual_flags' : 'manual_notes';
+            await setDoc(doc(db, "scores", skaterId), { [targetField]: arrayUnion(noteKey) }, { merge: true });
+            
+            alert(`📌 成功加入自訂項目！(${manualType.toUpperCase()})`);
             closeManualModal();
             loadFlaggedData(); 
         } catch (e) { alert("加入失敗！"); }
     }
 
-    // --- 儲存所有筆記與免責狀態 ---
     window.saveAllNotes = async function() {
-        // 找出所有被修改過的 skaterId
         const idsToSave = Object.keys(globalSkaterUpdates).filter(id => globalSkaterUpdates[id].isModified);
         if (idsToSave.length === 0) { alert("目前沒有修改任何內容。"); return; }
 
@@ -555,7 +543,6 @@
             });
             await Promise.all(updatePromises);
             
-            // 儲存成功後，重置 modified 狀態
             idsToSave.forEach(id => globalSkaterUpdates[id].isModified = false);
             
             alert('✅ 所有註解與免責選項已成功儲存至雲端！');
@@ -565,8 +552,8 @@
         }
     }
 
-    window.loadFlaggedData = loadFlaggedData;
-    loadFlaggedData();
+    // 頁面載入時就在背景先抓取資料
+    window.onload = loadFlaggedData;
 </script>
 </body>
 </html>
