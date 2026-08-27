@@ -24,7 +24,6 @@
       PCS Judge Analysis (OAC)
   </h1>
 
-  <!-- 瘦身：直接滿版滿寬 -->
   <div class="flex-1 overflow-hidden w-full relative flex flex-col">
     
     <div id="intro-banner" class="bg-white p-8 rounded-xl shadow border border-slate-200 text-center text-slate-500 font-medium text-lg max-w-2xl mx-auto mt-10">
@@ -50,35 +49,9 @@
               </div>
           </div>
 
-          <!-- Report 2: Range for the whole segment (全場最高最低) -->
-          <div class="bg-white p-6 rounded-xl shadow-lg w-full">
-              <h2 class="section-title">Range of marks for the whole segment</h2>
-              <p class="text-sm text-slate-500 mb-4">分析裁判在「整場比賽所有選手」中給出的最低與最高 PCS (三項合併看)。區間差 ≤ 1.50 將給予紅色警示 (Corridor Judging)。</p>
-              <div class="overflow-x-auto">
-                  <table class="oac-table lg:w-1/2 w-full" id="segment-range-table">
-                      <!-- JS 生成 -->
-                  </table>
-              </div>
-          </div>
-
-          <!-- Report 3: Highest and Lowest by Component (單項分布) -->
-          <div class="bg-white p-6 rounded-xl shadow-lg w-full">
-              <h2 class="section-title">Composition / Presentation / Skills : Range</h2>
-              <p class="text-sm text-slate-500 mb-4">拆解三項指標在全場的給分區間 (Min, Max, Difference)。</p>
-              <div class="grid grid-cols-1 xl:grid-cols-3 gap-6" id="component-range-container">
-                  <!-- JS 生成 -->
-              </div>
-          </div>
-
-          <!-- Report 4: Matrix Usage (給分次數矩陣與不同給分數統計) -->
-          <div class="bg-white p-6 rounded-xl shadow-lg w-full">
-              <h2 class="section-title">Number of times a judge has given a certain mark</h2>
-              <p class="text-sm text-slate-500 mb-4">依序呈現三項分數及總分的給分次數。表格底部統計裁判「使用了幾種不同的分數 (Distinct Marks)」。</p>
-              <div class="overflow-x-auto">
-                  <table class="oac-table" id="matrix-table">
-                      <!-- JS 生成 -->
-                  </table>
-              </div>
+          <!-- Report 2~5: Matrix & Range (給分次數矩陣與統計) -->
+          <div id="matrices-container" class="flex flex-col gap-8 w-full">
+              <!-- JS 生成 4 個獨立區塊 -->
           </div>
       </div>
     </div>
@@ -120,7 +93,6 @@
 
             isDataLoaded = true;
             
-            // 處理廣播時差
             if (pendingComp) {
                 analyzeCompetition(pendingComp);
                 pendingComp = null;
@@ -131,7 +103,6 @@
         }
     }
 
-    // 【新增】監聽來自 index.html 的跨網頁廣播
     window.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'GLOBAL_COMP_SELECTED') {
             const selectedComp = event.data.comp;
@@ -213,9 +184,7 @@
         });
 
         renderVarianceTable(judgesData);
-        renderSegmentRangeTable(judgesData);
-        renderComponentRanges(judgesData);
-        renderMatrixTable(judgesData);
+        renderMatrixTables(judgesData);
     }
 
     function renderVarianceTable(judgesData) {
@@ -244,84 +213,42 @@
         tbody.innerHTML = html;
     }
 
-    function renderSegmentRangeTable(judgesData) {
-        const tbody = document.getElementById('segment-range-table');
-        let html = `<thead><tr><th>Judge</th><th>Min</th><th>Max</th><th>Range (Max-Min)</th></tr></thead><tbody>`;
-        
-        judgesData.forEach(judge => {
-            const marks = judge.allMarks;
-            if (marks.length === 0) return;
-            const min = Math.min(...marks);
-            const max = Math.max(...marks);
-            const diff = max - min;
-            const colorClass = diff <= 1.50 ? 'alert-red' : '';
-            html += `<tr>
-                <td class="font-bold bg-slate-50">${judge.name}</td>
-                <td>${min.toFixed(2)}</td><td>${max.toFixed(2)}</td>
-                <td class="${colorClass}">${diff.toFixed(2)}</td>
-            </tr>`;
-        });
-        html += `</tbody>`;
-        tbody.innerHTML = html;
-    }
-
-    function renderComponentRanges(judgesData) {
-        const container = document.getElementById('component-range-container');
-        container.innerHTML = '';
-        
-        const configs = [
-            { title: "Composition", key: "compMarks" },
-            { title: "Presentation", key: "presMarks" },
-            { title: "Skating Skills", key: "skillsMarks" }
-        ];
-
-        configs.forEach(cfg => {
-            let html = `<div class="border border-slate-200 rounded overflow-hidden shadow-sm">
-                <div class="bg-slate-100 font-bold p-3 text-center text-blue-900 border-b border-slate-200 uppercase">${cfg.title}</div>
-                <table class="oac-table w-full border-0">
-                    <thead><tr><th>J</th><th>Min</th><th>Max</th><th>Diff</th></tr></thead>
-                    <tbody>`;
-            
-            judgesData.forEach(judge => {
-                const marks = judge[cfg.key];
-                if (marks.length === 0) return;
-                const min = Math.min(...marks);
-                const max = Math.max(...marks);
-                const diff = max - min;
-                html += `<tr>
-                    <td class="font-bold bg-slate-50">${judge.name}</td>
-                    <td>${min.toFixed(2)}</td><td>${max.toFixed(2)}</td>
-                    <td class="${diff <= 1.0 ? 'text-red-600 font-bold' : ''}">${diff.toFixed(2)}</td>
-                </tr>`;
-            });
-            html += `</tbody></table></div>`;
-            container.innerHTML += html;
-        });
-    }
-
-    function renderMatrixTable(judgesData) {
-        const tbody = document.getElementById('matrix-table');
-        let html = `<thead><tr><th class="text-left" width="10%">Mark</th>`;
-        judgesData.forEach(j => html += `<th>${j.name}</th>`);
-        html += `</tr></thead><tbody>`;
+    // 整合後的 Matrix 與 Range 卡片生成器
+    function renderMatrixTables(judgesData) {
+        const container = document.getElementById('matrices-container');
+        let html = '';
 
         const sections = [
-            { label: 'Composition', key: 'compMarks' },
-            { label: 'Presentation', key: 'presMarks' },
-            { label: 'Skating Skills', key: 'skillsMarks' },
-            { label: 'All PCs (Total Matrix)', key: 'allMarks' }
+            { label: 'Composition', key: 'compMarks', rangeThreshold: 1.0 },
+            { label: 'Presentation', key: 'presMarks', rangeThreshold: 1.0 },
+            { label: 'Skating Skills', key: 'skillsMarks', rangeThreshold: 1.0 },
+            { label: 'Total Segment (All PCs)', key: 'allMarks', rangeThreshold: 1.50 }
         ];
 
         sections.forEach(section => {
-            html += `<tr class="bg-blue-50 border-y-2 border-blue-200"><td colspan="${judgesData.length + 1}" class="font-black text-blue-800 text-left px-4 py-2">${section.label}</td></tr>`;
+            html += `<div class="bg-white p-6 rounded-xl shadow-lg w-full">
+                <h2 class="section-title">${section.label}</h2>
+                <div class="overflow-x-auto">
+                    <table class="oac-table w-full">
+                        <thead>
+                            <tr>
+                                <th class="text-left" width="10%">Mark</th>`;
+            
+            judgesData.forEach(j => html += `<th>${j.name}</th>`);
+            html += `</tr></thead><tbody>`;
 
             let allUsedMarks = [];
             judgesData.forEach(j => allUsedMarks.push(...j[section.key]));
-            if (allUsedMarks.length === 0) return;
+            
+            if (allUsedMarks.length === 0) {
+                html += `<tr><td colspan="${judgesData.length + 1}">No Data</td></tr></tbody></table></div></div>`;
+                return;
+            }
             
             const overallMax = Math.max(...allUsedMarks);
             const overallMin = Math.min(...allUsedMarks);
 
+            // 1. 矩陣主體
             for (let m = overallMax; m >= overallMin; m -= 0.25) {
                 let hasAny = false;
                 let rowHtml = `<tr><td class="font-bold bg-slate-50 border-r-2 border-slate-300">${m.toFixed(2)}</td>`;
@@ -332,21 +259,56 @@
                     rowHtml += `<td>${count > 0 ? count : ''}</td>`;
                 });
                 rowHtml += `</tr>`;
-                
                 if (hasAny) html += rowHtml;
             }
 
+            // 2. 底部統計區塊
+            // Max
+            html += `<tr class="bg-slate-100 border-t-4 border-slate-400">
+                <td class="font-bold text-slate-700 text-left border-r-2 border-slate-300">Max</td>`;
+            judgesData.forEach(judge => {
+                const marks = judge[section.key];
+                html += `<td>${marks.length > 0 ? Math.max(...marks).toFixed(2) : '-'}</td>`;
+            });
+            html += `</tr>`;
+
+            // Min
+            html += `<tr class="bg-slate-100">
+                <td class="font-bold text-slate-700 text-left border-r-2 border-slate-300">Min</td>`;
+            judgesData.forEach(judge => {
+                const marks = judge[section.key];
+                html += `<td>${marks.length > 0 ? Math.min(...marks).toFixed(2) : '-'}</td>`;
+            });
+            html += `</tr>`;
+
+            // Range (含警示邏輯)
+            html += `<tr class="bg-slate-100">
+                <td class="font-bold text-slate-700 text-left border-r-2 border-slate-300">Range</td>`;
+            judgesData.forEach(judge => {
+                const marks = judge[section.key];
+                if(marks.length > 0) {
+                    const diff = Math.max(...marks) - Math.min(...marks);
+                    const isRed = diff <= section.rangeThreshold;
+                    html += `<td class="font-bold ${isRed ? 'alert-red' : 'text-blue-800'}">${diff.toFixed(2)}</td>`;
+                } else {
+                    html += `<td>-</td>`;
+                }
+            });
+            html += `</tr>`;
+
+            // Distinct Marks
             html += `<tr class="bg-yellow-50 font-bold border-t-2 border-slate-300">
-                <td class="text-right text-slate-700 border-r-2 border-slate-300">Distinct Marks Used</td>`;
+                <td class="text-left text-slate-700 border-r-2 border-slate-300">Distinct Marks</td>`;
             judgesData.forEach(judge => {
                 const distinctCount = new Set(judge[section.key]).size;
                 html += `<td class="text-blue-700 text-lg">${distinctCount > 0 ? distinctCount : '-'}</td>`;
             });
             html += `</tr>`;
+
+            html += `</tbody></table></div></div>`;
         });
 
-        html += `</tbody>`;
-        tbody.innerHTML = html;
+        container.innerHTML = html;
     }
 
     // 啟動載入
