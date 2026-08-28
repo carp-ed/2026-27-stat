@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>Maelstrom Control Center - Event Editor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; overflow: hidden; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .input-field { border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.5rem 0.75rem; width: 100%; outline: none; transition: all 0.2s; font-weight: 600;}
+    .input-field:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+    .ppc-input { border: 1px solid transparent; background: transparent; padding: 4px 6px; width: 100%; border-radius: 4px; font-weight: 700; color: #334155; }
+    .ppc-input:hover { border-color: #e2e8f0; }
+    .ppc-input:focus { border-color: #4f46e5; background: white; outline: none; }
+    
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- 頂部標題與搜尋列 (Header) -->
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm z-50">
+        <div class="flex items-center gap-4">
+            <a href="index.html" class="text-slate-500 hover:text-indigo-600 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-indigo-50">
+                ◀ 返回主選單
+            </a>
+            <div class="w-px h-6 bg-slate-300"></div>
+            <h1 class="text-xl font-black text-indigo-900 uppercase tracking-widest flex items-center gap-2">
+                <span>🛠️</span> EVENT SETUP
+            </h1>
+        </div>
+
+        <div class="relative w-full max-w-md" id="search-container">
+            <input type="text" id="event-search" placeholder="🔍 搜尋或選擇要編輯的賽事..." class="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 font-bold text-slate-700 transition-all shadow-inner" onfocus="showSearchDropdown()" oninput="filterEvents()">
+            
+            <div id="search-dropdown" class="absolute w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-1 hidden max-h-80 overflow-y-auto custom-scrollbar z-[100]">
+                <div class="p-4 text-center text-sm text-slate-400 font-bold">Syncing with Firestore...</div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button onclick="createNewEvent()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                <span>+ NEW EVENT</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 中央編輯區 (Main Content) -->
+    <main class="flex-1 overflow-y-auto relative flex flex-col items-center hide-scrollbar" id="main-scroll-area">
+        
+        <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 font-medium z-10 transition-opacity">
+            <div class="text-6xl mb-4">👆</div>
+            <div class="text-xl font-bold text-slate-600">Search an event above to edit its roster</div>
+            <div class="text-base mt-2">or click <b class="text-indigo-500">+ NEW EVENT</b> to build a new competition.</div>
+        </div>
+
+        <div id="builder-state" class="w-full max-w-5xl py-8 px-4 flex flex-col gap-6 hidden opacity-0 transition-opacity duration-300 z-20 pb-32">
+            
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-black text-slate-800 uppercase tracking-wide">Competition Settings</h2>
+                    <span id="editor-status" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest hidden">Editing Existing</span>
+                </div>
+                
+                <div class="grid grid-cols-12 gap-6 items-end">
+                    <div class="col-span-8">
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Event Name <span class="text-rose-500">*</span></label>
+                        <input type="text" id="build-comp-name" class="input-field text-indigo-900 text-lg" placeholder="e.g. 2026 World Championships">
+                    </div>
+                    <div class="col-span-4">
+                        <label class="block text-xs font-bold text-slate-500 mb-1">PCS Factor</label>
+                        <input type="number" id="build-factor" class="input-field text-indigo-900 text-lg" value="1.33" step="0.01">
+                    </div>
+                </div>
+
+                <div id="batch-generate-zone" class="mt-6 pt-6 border-t border-slate-100 grid grid-cols-12 gap-6 items-end">
+                    <div class="col-span-8 text-sm font-bold text-slate-400">
+                        Quickly generate multiple blank forms for batch pasting.
+                    </div>
+                    <div class="col-span-2">
+                        <input type="number" id="build-skater-count" class="input-field text-center text-indigo-900 font-black" value="1" min="1" placeholder="Qty">
+                    </div>
+                    <div class="col-span-2">
+                        <button onclick="generateSkaterForms()" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-bold py-2 rounded-lg transition-colors">
+                            Generate ↓
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 選手表單容器 -->
+            <div id="skater-forms-container" class="flex flex-col gap-6">
+                <!-- 動態載入表單 -->
+            </div>
+
+            <div class="flex justify-center mt-4">
+                <button onclick="addBlankSkaterForm()" class="bg-white border-2 border-dashed border-slate-300 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 font-bold py-4 px-10 rounded-2xl transition-colors flex items-center gap-2 shadow-sm">
+                    <span class="text-xl">➕</span> <span>Add Blank Skater to Roster</span>
+                </button>
+            </div>
+        </div>
+    </main>
+    
+    <!-- 底部固定操作列 (Action Bar) -->
+    <div id="action-bar" class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 p-4 flex justify-center gap-4 z-40 hidden shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] transition-transform translate-y-full">
+        <div class="w-full max-w-5xl flex gap-4">
+            <button onclick="deleteEventFromFirebase()" id="delete-btn" class="px-8 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl transition-colors border border-rose-200 hidden">
+                🗑️ Delete Event
+            </button>
+            <button onclick="saveEventToFirebase()" id="save-db-btn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-transform hover:scale-[1.01] uppercase tracking-wider">
+                Save Roster Updates
+            </button>
+        </div>
+    </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, updateDoc, query, where, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBcTYwmWN6W9gEmnvO2QyS1y2tCgDUUAgU",
+      authDomain: "project-6981083948742415857.firebaseapp.com",
+      projectId: "project-6981083948742415857",
+      storageBucket: "project-6981083948742415857.firebasestorage.app",
+      messagingSenderId: "708190565768",
+      appId: "1:708190565768:web:00658fdeff9cf79341763d",
+      measurementId: "G-MHC2PZ27D8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let globalEventsList = [];
+    let activeEventName = null;
+    let formCounter = 0; 
+    let currentLoadedSkaters = [];
+
+    window.onload = async function() {
+        await fetchGlobalEvents();
+    };
+
+    // ==========================================
+    // 🔍 頂部搜尋列邏輯
+    // ==========================================
+    async function fetchGlobalEvents() {
+        try {
+            const snap = await getDocs(collection(db, "scores"));
+            const compMap = {};
+            snap.forEach(document => {
+                const data = document.data();
+                const compName = data.competition;
+                if (compName) {
+                    if (!compMap[compName]) compMap[compName] = { count: 0, factor: data.factor || 1.33 };
+                    compMap[compName].count++;
+                }
+            });
+
+            globalEventsList = Object.keys(compMap).map(name => ({
+                name: name,
+                skatersCount: compMap[name].count,
+                factor: compMap[name].factor
+            })).sort((a, b) => a.name.localeCompare(b.name));
+
+            renderSearchDropdown(globalEventsList);
+        } catch (error) {
+            console.error("Firebase 連線錯誤:", error);
+            document.getElementById('search-dropdown').innerHTML = `<div class="p-4 text-center text-rose-500 font-bold">Database Connection Failed.</div>`;
+        }
+    }
+
+    function renderSearchDropdown(events) {
+        const dropdown = document.getElementById('search-dropdown');
+        dropdown.innerHTML = '';
+        
+        if (events.length === 0) {
+            dropdown.innerHTML = `<div class="p-4 text-center text-slate-400 font-bold">No events found.</div>`;
+            return;
+        }
+
+        events.forEach((ev) => {
+            const safeNameText = ev.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const item = document.createElement('div');
+            item.className = "px-4 py-3 hover:bg-indigo-50 border-b border-slate-100 last:border-0 cursor-pointer flex justify-between items-center transition-colors";
+            item.innerHTML = `
+                <div class="font-bold text-slate-700">${safeNameText}</div>
+                <div class="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded">${ev.skatersCount} Skaters</div>
+            `;
+            item.onclick = () => {
+                document.getElementById('event-search').value = ev.name;
+                document.getElementById('search-dropdown').classList.add('hidden');
+                loadEventForEdit(ev.name, ev.factor);
+            };
+            dropdown.appendChild(item);
+        });
+    }
+
+    window.filterEvents = function() {
+        const text = document.getElementById('event-search').value.toLowerCase();
+        const filtered = globalEventsList.filter(e => e.name.toLowerCase().includes(text));
+        renderSearchDropdown(filtered);
+        document.getElementById('search-dropdown').classList.remove('hidden');
+    };
+
+    window.showSearchDropdown = function() {
+        document.getElementById('search-dropdown').classList.remove('hidden');
+        window.filterEvents();
+    };
+
+    document.addEventListener('click', (e) => {
+        const container = document.getElementById('search-container');
+        if (container && !container.contains(e.target)) {
+            document.getElementById('search-dropdown').classList.add('hidden');
+        }
+    });
+
+    // ==========================================
+    // 🛠️ 編輯器介面控制
+    // ==========================================
+    function setPanelState(state) {
+        const empty = document.getElementById('empty-state');
+        const builder = document.getElementById('builder-state');
+        const actionBar = document.getElementById('action-bar');
+        
+        if (state === 'empty') {
+            empty.style.display = 'flex';
+            setTimeout(() => empty.style.opacity = '1', 10);
+            
+            builder.style.opacity = '0';
+            setTimeout(() => builder.style.display = 'none', 300);
+            
+            actionBar.classList.remove('translate-y-0');
+            actionBar.classList.add('translate-y-full');
+            setTimeout(() => actionBar.classList.add('hidden'), 300);
+        } else {
+            empty.style.opacity = '0';
+            setTimeout(() => empty.style.display = 'none', 300);
+            
+            builder.style.display = 'flex';
+            setTimeout(() => builder.style.opacity = '1', 10);
+            
+            actionBar.classList.remove('hidden');
+            setTimeout(() => {
+                actionBar.classList.remove('translate-y-full');
+                actionBar.classList.add('translate-y-0');
+            }, 10);
+        }
+    }
+
+    window.createNewEvent = function() {
+        activeEventName = null;
+        document.getElementById('event-search').value = '';
+        
+        document.getElementById('build-comp-name').value = '';
+        document.getElementById('build-factor').value = 1.33;
+        document.getElementById('skater-forms-container').innerHTML = '';
+        document.getElementById('editor-status').classList.add('hidden');
+        document.getElementById('delete-btn').classList.add('hidden');
+        document.getElementById('batch-generate-zone').classList.remove('hidden');
+        
+        formCounter = 0;
+        currentLoadedSkaters = [];
+        addBlankSkaterForm(); 
+        setPanelState('builder');
+    };
+
+    window.loadEventForEdit = async function(compName, factor) {
+        activeEventName = compName;
+        document.getElementById('build-comp-name').value = compName;
+        document.getElementById('build-factor').value = factor || 1.33;
+        
+        document.getElementById('editor-status').classList.remove('hidden');
+        document.getElementById('delete-btn').classList.remove('hidden');
+        document.getElementById('batch-generate-zone').classList.add('hidden'); 
+        
+        const container = document.getElementById('skater-forms-container');
+        container.innerHTML = `<div class="text-center text-slate-400 font-bold py-20 flex flex-col items-center"><svg class="animate-spin h-8 w-8 text-indigo-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Loading Roster Data...</div>`;
+        setPanelState('builder');
+
+        try {
+            const q = query(collection(db, "scores"), where("competition", "==", compName));
+            const snap = await getDocs(q);
+            
+            currentLoadedSkaters = [];
+            snap.forEach(doc => { currentLoadedSkaters.push({ id: doc.id, ...doc.data() }); });
+            
+            currentLoadedSkaters.sort((a, b) => (parseInt(a.stn) || 0) - (parseInt(b.stn) || 0));
+            
+            container.innerHTML = '';
+            formCounter = 0;
+            
+            if (currentLoadedSkaters.length === 0) {
+                addBlankSkaterForm();
+            } else {
+                currentLoadedSkaters.forEach(skater => renderSingleSkaterForm(skater));
+            }
+        } catch (e) {
+            container.innerHTML = `<div class="text-center text-rose-500 font-bold py-10">Failed to load data.</div>`;
+        }
+    };
+
+    // ==========================================
+    // ✍️ 表單渲染與貼上邏輯
+    // ==========================================
+    window.handlePaste = function(e, formId, colType, startRowIdx) {
+        e.preventDefault();
+        const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+        const rows = pasteData.split(/\r\n|\n|\r/);
+        
+        let currRow = startRowIdx;
+        for (let i = 0; i < rows.length; i++) {
+            if (currRow > 12) break; 
+            const val = rows[i].trim();
+            const inputEl = document.getElementById(`form-${formId}-${colType}-${currRow}`);
+            if (inputEl && val) {
+                inputEl.value = val;
+                inputEl.style.backgroundColor = '#dcfce3'; 
+                setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+            }
+            currRow++;
+        }
+    };
+
+    window.addBlankSkaterForm = function() {
+        formCounter++;
+        renderSingleSkaterForm({ id: "", stn: formCounter, skater: "", noc: "", planned_elements: "", planned_info: "", planned_falls: "" }, true);
+        
+        setTimeout(() => {
+            const area = document.getElementById('main-scroll-area');
+            area.scrollTop = area.scrollHeight;
+        }, 100);
+    };
+
+    window.generateSkaterForms = function() {
+        const count = parseInt(document.getElementById('build-skater-count').value);
+        if (!count || count <= 0) return;
+        for(let i=0; i<count; i++) {
+            addBlankSkaterForm();
+        }
+    };
+
+    function renderSingleSkaterForm(skaterData, isNew = false) {
+        const container = document.getElementById('skater-forms-container');
+        const fId = isNew ? `new-${formCounter}` : skaterData.id; 
+        
+        const elements = skaterData.planned_elements ? skaterData.planned_elements.split(',').map(s => s.trim()) : [];
+        const infos = skaterData.planned_info ? skaterData.planned_info.split(',').map(s => s.trim()) : [];
+        const falls = skaterData.planned_falls ? skaterData.planned_falls.split(',').map(s => s.trim() === 'true') : [];
+
+        let html = `
+        <div class="bg-white p-6 rounded-2xl border ${isNew ? 'border-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.15)]' : 'border-slate-200 shadow-sm hover:shadow-md'} transition-shadow skater-form-block relative group" data-doc-id="${skaterData.id}">
+            ${isNew ? '<div class="absolute -top-3 -right-3 bg-emerald-100 text-emerald-700 text-[10px] font-black px-3 py-1 rounded-full uppercase shadow-sm">New Form</div>' : ''}
+            
+            <div class="grid grid-cols-12 gap-4 mb-4 pb-4 relative">
+                <!-- 【調整 1】: Skater Name -> NOC -> STN -->
+                <div class="col-span-7">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Skater Name</label>
+                    <input type="text" id="form-${fId}-name" value="${skaterData.skater || ''}" class="input-field" placeholder="Full Name">
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">NOC</label>
+                    <input type="text" id="form-${fId}-noc" value="${skaterData.noc || ''}" class="input-field text-center uppercase font-black tracking-widest text-slate-500" placeholder="e.g. USA">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">STN</label>
+                    <input type="number" id="form-${fId}-stn" value="${skaterData.stn || ''}" class="input-field text-center font-black text-indigo-600 bg-indigo-50 border-indigo-100">
+                </div>
+            </div>
+            
+            <div class="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="bg-slate-200/70 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                            <th class="py-2 px-3 w-10 text-center">#</th>
+                            <th class="py-2 px-3 w-1/2">Planned Element</th>
+                            <!-- 【調整 2】: Fall 在前，Info 在後 -->
+                            <th class="py-2 px-3 w-24 text-center">Fall</th>
+                            <th class="py-2 px-3">Info / Calls</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm">
+        `;
+        
+        for (let e = 1; e <= 12; e++) {
+            const bgClass = e % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+            const elVal = elements[e-1] || '';
+            const infoVal = infos[e-1] || '';
+            const isFall = falls[e-1] ? 'checked' : '';
+            
+            html += `
+                        <tr class="border-t border-slate-100 ${bgClass}">
+                            <td class="py-1 px-3 text-center text-slate-400 font-bold align-middle">${e}</td>
+                            <td class="py-1 px-2 border-r border-slate-200 align-middle">
+                                <input type="text" id="form-${fId}-el-${e}" value="${elVal}" class="ppc-input" onpaste="handlePaste(event, '${fId}', 'el', ${e})">
+                            </td>
+                            <!-- 【調整 2】: Fall 區塊移至前方，並加上右邊線區隔 -->
+                            <td class="py-1 px-3 text-center align-middle border-r border-slate-200">
+                                <input type="checkbox" id="form-${fId}-fall-${e}" ${isFall} class="w-4 h-4 text-rose-600 rounded border-slate-300 cursor-pointer">
+                            </td>
+                            <td class="py-1 px-2 align-middle">
+                                <input type="text" id="form-${fId}-info-${e}" value="${infoVal}" class="ppc-input text-rose-600" onpaste="handlePaste(event, '${fId}', 'info', ${e})">
+                            </td>
+                        </tr>
+            `;
+        }
+        html += `</tbody></table></div></div>`;
+        
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        container.appendChild(wrapper.firstElementChild);
+    }
+
+    // ==========================================
+    // 💾 安全儲存與刪除
+    // ==========================================
+    window.saveEventToFirebase = async function() {
+        const compName = document.getElementById('build-comp-name').value.trim();
+        const factor = document.getElementById('build-factor').value;
+
+        if (!compName) return alert("Please enter the Event Name.");
+
+        const btn = document.getElementById('save-db-btn');
+        btn.innerText = "SAVING TO FIRESTORE...";
+        btn.disabled = true;
+
+        const forms = document.querySelectorAll('.skater-form-block');
+        let updateCount = 0;
+        let addCount = 0;
+
+        try {
+            const savePromises = Array.from(forms).map(async (form) => {
+                const docId = form.getAttribute('data-doc-id');
+                const stnInput = form.querySelector('[id$="-stn"]');
+                const nameInput = form.querySelector('[id$="-name"]');
+                const nocInput = form.querySelector('[id$="-noc"]');
+                
+                const name = nameInput.value.trim();
+                if (!name) return Promise.resolve();
+
+                let elementsArray = []; let infoArray = []; let fallsArray = [];
+
+                for (let e = 1; e <= 12; e++) {
+                    const elInput = form.querySelector(`[id$="-el-${e}"]`);
+                    const infoInput = form.querySelector(`[id$="-info-${e}"]`);
+                    const fallInput = form.querySelector(`[id$="-fall-${e}"]`);
+                    
+                    if (elInput && elInput.value.trim()) {
+                        elementsArray.push(elInput.value.trim());
+                        infoArray.push(infoInput ? infoInput.value.trim() : "");
+                        fallsArray.push(fallInput ? fallInput.checked : false); 
+                    }
+                }
+
+                const skaterObj = {
+                    competition: compName,
+                    stn: parseInt(stnInput.value) || 0,
+                    skater: name,
+                    noc: nocInput.value.trim().toUpperCase(),
+                    factor: parseFloat(factor),
+                    planned_elements: elementsArray.join(", "),
+                    planned_info: infoArray.join(", "),
+                    planned_falls: fallsArray.join(", ")
+                };
+
+                if (docId) {
+                    updateCount++;
+                    return updateDoc(doc(db, "scores", docId), skaterObj);
+                } else {
+                    addCount++;
+                    return addDoc(collection(db, "scores"), skaterObj);
+                }
+            });
+
+            await Promise.all(savePromises);
+            
+            alert(`✅ 儲存成功！\n\n更新了 ${updateCount} 筆既有資料\n新增了 ${addCount} 筆新資料`);
+            
+            btn.innerText = "SAVE ROSTER UPDATES";
+            btn.disabled = false;
+            
+            await fetchGlobalEvents();
+            loadEventForEdit(compName, factor);
+
+        } catch (error) {
+            console.error("儲存失敗:", error);
+            alert(`儲存失敗！錯誤訊息：\n${error.message}`);
+            btn.innerText = "SAVE ROSTER UPDATES";
+            btn.disabled = false;
+        }
+    };
+
+    window.deleteEventFromFirebase = async function() {
+        if (!activeEventName) return;
+        
+        const confirmDelete = confirm(`⚠️ 警告！\n您確定要刪除【${activeEventName}】的所有選手資料嗎？\n此動作無法復原！`);
+        if (!confirmDelete) return;
+
+        const btn = document.getElementById('delete-btn');
+        btn.innerHTML = "DELETING...";
+        btn.disabled = true;
+
+        try {
+            const q = query(collection(db, "scores"), where("competition", "==", activeEventName));
+            const querySnapshot = await getDocs(q);
+            
+            const deletePromises = [];
+            querySnapshot.forEach((document) => {
+                deletePromises.push(deleteDoc(doc(db, "scores", document.id)));
+            });
+            
+            await Promise.all(deletePromises);
+            
+            alert(`✅ 刪除成功！\n已清除該賽事的 ${deletePromises.length} 筆資料。`);
+            
+            btn.innerHTML = "🗑️ Delete Event";
+            btn.disabled = false;
+            
+            document.getElementById('event-search').value = '';
+            setPanelState('empty');
+            activeEventName = null;
+            await fetchGlobalEvents();
+
+        } catch (error) {
+            console.error("刪除失敗:", error);
+            alert("刪除失敗，請檢查網路連線或資料庫權限！");
+            btn.innerHTML = "🗑️ Delete Event";
+            btn.disabled = false;
+        }
+    };
+</script>
+</body>
+</html>
