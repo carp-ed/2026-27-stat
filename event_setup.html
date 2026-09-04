@@ -305,8 +305,40 @@
     };
 
     // ==========================================
-    // ✍️ 表單渲染與貼上邏輯
+    // ✍️ 表單渲染與【魔法貼上】邏輯
     // ==========================================
+    
+    // 魔法 1：選手基本資料一鍵貼上
+    window.handleSkaterInfoPaste = function(e, formId) {
+        const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+        
+        // 用 Tab 切割，並自動濾除 Excel 中間的空白欄位
+        const parts = pasteData.split('\t').map(s => s.trim()).filter(s => s !== '');
+        
+        // 如果偵測到複製了多個欄位 (至少包含名字和國籍)
+        if (parts.length >= 2) {
+            e.preventDefault(); 
+            
+            const nameInput = document.getElementById(`form-${formId}-name`);
+            const nocInput = document.getElementById(`form-${formId}-noc`);
+            const stnInput = document.getElementById(`form-${formId}-stn`);
+
+            if (nameInput) nameInput.value = parts[0] || '';
+            if (nocInput) nocInput.value = parts[1] || '';
+            // 嘗試解析 STN 數字，如果有第 3 個值的話
+            if (stnInput && parts[2]) {
+                const parsedStn = parseInt(parts[2].replace(/\D/g, ''));
+                stnInput.value = isNaN(parsedStn) ? '' : parsedStn;
+            }
+
+            // 綠色閃爍視覺回饋
+            [nameInput, nocInput, stnInput].forEach(el => {
+                if(el) { el.style.backgroundColor = '#dcfce3'; setTimeout(() => el.style.backgroundColor = 'transparent', 500); }
+            });
+        }
+    };
+
+    // 魔法 2：動作表格區塊 (矩陣) 貼上
     window.handlePaste = function(e, formId, colType, startRowIdx) {
         e.preventDefault();
         const pasteData = (e.clipboardData || window.clipboardData).getData('text');
@@ -315,12 +347,43 @@
         let currRow = startRowIdx;
         for (let i = 0; i < rows.length; i++) {
             if (currRow > 12) break; 
-            const val = rows[i].trim();
-            const inputEl = document.getElementById(`form-${formId}-${colType}-${currRow}`);
-            if (inputEl && val) {
-                inputEl.value = val;
-                inputEl.style.backgroundColor = '#dcfce3'; 
-                setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+            const rowStr = rows[i];
+            
+            // 略過最後一行的空白換行
+            if (!rowStr && i === rows.length - 1) continue; 
+            
+            const cols = rowStr.split('\t');
+            
+            // 偵測：如果是貼在 Element 且複製了多欄資料 (矩陣貼上模式)
+            if (colType === 'el' && cols.length > 1) {
+                const elInput = document.getElementById(`form-${formId}-el-${currRow}`);
+                const fallInput = document.getElementById(`form-${formId}-fall-${currRow}`);
+                const infoInput = document.getElementById(`form-${formId}-info-${currRow}`);
+
+                if (elInput) elInput.value = (cols[0] || '').trim();
+                
+                // 自動判斷是否 Fall (偵測 F, f, 1, true, Fall 等字眼)
+                if (fallInput) {
+                    const fallStr = (cols[1] || '').trim().toUpperCase();
+                    fallInput.checked = (fallStr === 'F' || fallStr === 'FALL' || fallStr === '1');
+                }
+                
+                if (infoInput) infoInput.value = (cols[2] || '').trim();
+
+                // 綠色閃爍視覺回饋
+                [elInput, infoInput].forEach(el => {
+                    if(el) { el.style.backgroundColor = '#dcfce3'; setTimeout(() => el.style.backgroundColor = 'transparent', 500); }
+                });
+            } 
+            // 傳統單欄多行貼上模式
+            else {
+                const val = rowStr.trim();
+                const inputEl = document.getElementById(`form-${formId}-${colType}-${currRow}`);
+                if (inputEl && val) {
+                    inputEl.value = val;
+                    inputEl.style.backgroundColor = '#dcfce3'; 
+                    setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+                }
             }
             currRow++;
         }
@@ -360,7 +423,7 @@
                 <!-- 【調整 1】: Skater Name -> NOC -> STN -->
                 <div class="col-span-7">
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Skater Name</label>
-                    <input type="text" id="form-${fId}-name" value="${skaterData.skater || ''}" class="input-field" placeholder="Full Name">
+                    <input type="text" id="form-${fId}-name" value="${skaterData.skater || ''}" class="input-field" placeholder="Full Name" onpaste="handleSkaterInfoPaste(event, '${fId}')">
                 </div>
                 <div class="col-span-3">
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">NOC</label>
