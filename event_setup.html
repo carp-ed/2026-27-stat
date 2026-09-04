@@ -338,7 +338,7 @@
         }
     };
 
-    // 魔法 2：動作表格區塊 (矩陣) 貼上
+   // 魔法 2：動作表格區塊 (智慧矩陣) 貼上
     window.handlePaste = function(e, formId, colType, startRowIdx) {
         e.preventDefault();
         const pasteData = (e.clipboardData || window.clipboardData).getData('text');
@@ -352,37 +352,127 @@
             // 略過最後一行的空白換行
             if (!rowStr && i === rows.length - 1) continue; 
             
-            const cols = rowStr.split('\t');
-            
-            // 偵測：如果是貼在 Element 且複製了多欄資料 (矩陣貼上模式)
-            if (colType === 'el' && cols.length > 1) {
+            // 偵測：如果是貼在 Element 且有跨欄符號 (矩陣貼上模式)
+            if (colType === 'el' && rowStr.includes('\t')) {
                 const elInput = document.getElementById(`form-${formId}-el-${currRow}`);
                 const fallInput = document.getElementById(`form-${formId}-fall-${currRow}`);
                 const infoInput = document.getElementById(`form-${formId}-info-${currRow}`);
 
-                if (elInput) elInput.value = (cols[0] || '').trim();
+                // 【智慧核心】把整列切開，並過濾掉所有空白欄位
+                const parts = rowStr.split('\t').map(s => s.trim()).filter(s => s !== '');
                 
-                // 自動判斷是否 Fall (偵測 F, f, 1, true, Fall 等字眼)
-                if (fallInput) {
-                    const fallStr = (cols[1] || '').trim().toUpperCase();
-                    fallInput.checked = (fallStr === 'F' || fallStr === 'FALL' || fallStr === '1');
-                }
-                
-                if (infoInput) infoInput.value = (cols[2] || '').trim();
+                if (parts.length > 0) {
+                    // 第 1 筆非空資料絕對是動作名稱
+                    if (elInput) elInput.value = parts[0];
+                    
+                    let isFall = false;
+                    let infos = [];
+                    
+                    // 從第 2 筆開始檢查，是 Fall 就打勾，是別的就歸類到 Info
+                    for (let j = 1; j < parts.length; j++) {
+                        const str = parts[j].toUpperCase();
+                        if (str === 'F' || str === 'FALL' || str === '1') {
+                            isFall = true;
+                        } else {
+                            infos.push(parts[j]);
+                        }
+                    }
+                    
+                    if (fallInput) fallInput.checked = isFall;
+                    if (infoInput) infoInput.value = infos.join(', ');
 
-                // 綠色閃爍視覺回饋
-                [elInput, infoInput].forEach(el => {
-                    if(el) { el.style.backgroundColor = '#dcfce3'; setTimeout(() => el.style.backgroundColor = 'transparent', 500); }
-                });
+                    // 綠色閃爍視覺回饋
+                    [elInput, infoInput].forEach(el => {
+                        if(el) { el.style.backgroundColor = '#dcfce3'; setTimeout(() => el.style.backgroundColor = 'transparent', 500); }
+                    });
+                }
             } 
-            // 傳統單欄多行貼上模式
+            // 傳統單欄多行貼上模式 (若只複製一欄，或不是貼在 el)
             else {
-                const val = rowStr.trim();
+                // 如果不小心貼到多欄，我們只取第一欄
+                const parts = rowStr.split('\t');
+                const val = parts[0].trim(); 
+                
                 const inputEl = document.getElementById(`form-${formId}-${colType}-${currRow}`);
                 if (inputEl && val) {
-                    inputEl.value = val;
-                    inputEl.style.backgroundColor = '#dcfce3'; 
-                    setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+                    if (colType === 'fall') {
+                        const str = val.toUpperCase();
+                        inputEl.checked = (str === 'F' || str === 'FALL' || str === '1' || str === 'TRUE');
+                    } else {
+                        inputEl.value = val;
+                        inputEl.style.backgroundColor = '#dcfce3'; 
+                        setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+                    }
+                }
+            }
+            currRow++;
+        }
+    };
+      // 魔法 2：動作表格區塊 (智慧矩陣) 貼上
+    window.handlePaste = function(e, formId, colType, startRowIdx) {
+        e.preventDefault();
+        const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+        const rows = pasteData.split(/\r\n|\n|\r/);
+        
+        let currRow = startRowIdx;
+        for (let i = 0; i < rows.length; i++) {
+            if (currRow > 12) break; 
+            const rowStr = rows[i];
+            
+            // 略過最後一行的空白換行
+            if (!rowStr && i === rows.length - 1) continue; 
+            
+            // 偵測：如果是貼在 Element 且有跨欄符號 (矩陣貼上模式)
+            if (colType === 'el' && rowStr.includes('\t')) {
+                const elInput = document.getElementById(`form-${formId}-el-${currRow}`);
+                const fallInput = document.getElementById(`form-${formId}-fall-${currRow}`);
+                const infoInput = document.getElementById(`form-${formId}-info-${currRow}`);
+
+                // 【智慧核心】把整列切開，並過濾掉所有空白欄位
+                const parts = rowStr.split('\t').map(s => s.trim()).filter(s => s !== '');
+                
+                if (parts.length > 0) {
+                    // 第 1 筆非空資料絕對是動作名稱
+                    if (elInput) elInput.value = parts[0];
+                    
+                    let isFall = false;
+                    let infos = [];
+                    
+                    // 從第 2 筆開始檢查，是 Fall 就打勾，是別的就歸類到 Info
+                    for (let j = 1; j < parts.length; j++) {
+                        const str = parts[j].toUpperCase();
+                        if (str === 'F' || str === 'FALL' || str === '1') {
+                            isFall = true;
+                        } else {
+                            infos.push(parts[j]);
+                        }
+                    }
+                    
+                    if (fallInput) fallInput.checked = isFall;
+                    if (infoInput) infoInput.value = infos.join(', ');
+
+                    // 綠色閃爍視覺回饋
+                    [elInput, infoInput].forEach(el => {
+                        if(el) { el.style.backgroundColor = '#dcfce3'; setTimeout(() => el.style.backgroundColor = 'transparent', 500); }
+                    });
+                }
+            } 
+            // 傳統單欄多行貼上模式 (若只複製一欄，或不是貼在 el)
+            else {
+                // 如果不小心貼到多欄，我們只取第一欄
+                const parts = rowStr.split('\t');
+                const val = parts[0].trim(); 
+                
+                const inputEl = document.getElementById(`form-${formId}-${colType}-${currRow}`);
+                if (inputEl && val) {
+                    if (colType === 'fall') {
+                        const str = val.toUpperCase();
+                        inputEl.checked = (str === 'F' || str === 'FALL' || str === '1' || str === 'TRUE');
+                    } else {
+                        inputEl.value = val;
+                        inputEl.style.backgroundColor = '#dcfce3'; 
+                        setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+                    }
                 }
             }
             currRow++;
