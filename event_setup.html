@@ -338,73 +338,121 @@
         }
     };
 
-   // 魔法 2：動作表格區塊 (智慧矩陣) 貼上
+// ==========================================
+    // 🧠 智慧型 Excel 解析引擎 (防禦儲存格內換行)
+    // ==========================================
+    const parseExcelData = (data) => {
+        let rows = [];
+        let currentRow = [];
+        let currentCell = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < data.length; i++) {
+            let c = data[i], nc = data[i+1];
+            
+            // 偵測到雙引號，開啟或關閉保護模式
+            if (c === '"') {
+                if (inQuotes && nc === '"') { currentCell += '"'; i++; } // 處理 Excel 內部的跳脫引號
+                else { inQuotes = !inQuotes; }
+            } 
+            // 遇到 Tab，切換到下一個欄位
+            else if (c === '\t' && !inQuotes) {
+                // 將儲存格內的換行轉為逗號
+                currentRow.push(currentCell.replace(/\r\n|\n|\r/g, ', ').trim());
+                currentCell = '';
+            } 
+            // 遇到真實的換行 (且不在引號保護內)，切換到下一行
+            else if ((c === '\n' || c === '\r') && !inQuotes) {
+                if (c === '\r' && nc === '\n') i++; // 略過 Windows 的 \r\n
+                currentRow.push(currentCell.replace(/\r\n|\n|\r/g, ', ').trim());
+                rows.push(currentRow);
+                currentRow = []; currentCell = '';
+            } 
+            // 一般字元，寫入目前儲存格
+            else {
+                currentCell += c;
+            }
+        }
+        
+        // 處理最後一筆收尾
+        if (currentCell !== '' || currentRow.length > 0) {
+            currentRow.push(currentCell.replace(/\r\n|\n|\r/g, ', ').trim());
+            rows.push(currentRow);
+        }
+        
+        // 移除最後一行如果是全空的 (Excel 複製結尾常帶有多餘換行)
+        if (rows.length > 0 && rows[rows.length - 1].every(x => x === '')) {
+            rows.pop();
+        }
+        
+        return rows;
+    };
+
+    // ==========================================
+    // ✍️ 升級版：支援複雜矩陣與合併的魔法貼上
+    // ==========================================
     window.handlePaste = function(e, formId, colType, startRowIdx) {
         e.preventDefault();
         const pasteData = (e.clipboardData || window.clipboardData).getData('text');
-        const rows = pasteData.split(/\r\n|\n|\r/);
+        
+        // 使用新引擎解析 Excel 剪貼資料
+        const rows = parseExcelData(pasteData);
         
         let currRow = startRowIdx;
         for (let i = 0; i < rows.length; i++) {
             if (currRow > 12) break; 
-            const rowStr = rows[i];
             
-            // 略過最後一行的空白換行
-            if (!rowStr && i === rows.length - 1) continue; 
+            const rawCols = rows[i];
+            const cols = rawCols.filter(s => s !== ''); // 濾掉空白欄位抓取有效資料
             
-            // 偵測：如果是貼在 Element 且有跨欄符號 (矩陣貼上模式)
-            if (colType === 'el' && rowStr.includes('\t')) {
-                const elInput = document.getElementById(`form-${formId}-el-${currRow}`);
-                const fallInput = document.getElementById(`form-${formId}-fall-${currRow}`);
-                const infoInput = document.getElementById(`form-${formId}-info-${currRow}`);
+            if (cols.length > 0) {
+                // 矩陣貼上模式 (原始複製資料大於 1 欄)
+                if (colType === 'el' && rawCols.length > 1) {
+                    const elInput = document.getElementById(`form-${formId}-el-${currRow}`);
+                    const fallInput = document.getElementById(`form-${formId}-fall-${currRow}`);
+                    const infoInput = document.getElementById(`form-${formId}-info-${currRow}`);
 
-                // 【智慧核心】把整列切開，並過濾掉所有空白欄位
-                const parts = rowStr.split('\t').map(s => s.trim()).filter(s => s !== '');
-                
-                if (parts.length > 0) {
-                    // 第 1 筆非空資料絕對是動作名稱
-                    if (elInput) elInput.value = parts[0];
+                    if (elInput) elInput.value = cols[0];
                     
                     let isFall = false;
                     let infos = [];
                     
-                    // 從第 2 筆開始檢查，是 Fall 就打勾，是別的就歸類到 Info
-                    for (let j = 1; j < parts.length; j++) {
-                        const str = parts[j].toUpperCase();
+                    // 自動判斷後續欄位是 Fall 還是 Info
+                    for (let j = 1; j < cols.length; j++) {
+                        const str = cols[j].toUpperCase();
                         if (str === 'F' || str === 'FALL' || str === '1') {
                             isFall = true;
                         } else {
-                            infos.push(parts[j]);
+                            infos.push(cols[j]);
                         }
                     }
                     
                     if (fallInput) fallInput.checked = isFall;
+                    // 將多個 Info 完美合併 (例如: ! 加上 q 變成 !, q)
                     if (infoInput) infoInput.value = infos.join(', ');
 
-                    // 綠色閃爍視覺回饋
                     [elInput, infoInput].forEach(el => {
                         if(el) { el.style.backgroundColor = '#dcfce3'; setTimeout(() => el.style.backgroundColor = 'transparent', 500); }
                     });
-                }
-            } 
-            // 傳統單欄多行貼上模式 (若只複製一欄，或不是貼在 el)
-            else {
-                // 如果不小心貼到多欄，我們只取第一欄
-                const parts = rowStr.split('\t');
-                const val = parts[0].trim(); 
-                
-                const inputEl = document.getElementById(`form-${formId}-${colType}-${currRow}`);
-                if (inputEl && val) {
-                    if (colType === 'fall') {
-                        const str = val.toUpperCase();
-                        inputEl.checked = (str === 'F' || str === 'FALL' || str === '1' || str === 'TRUE');
-                    } else {
-                        inputEl.value = val;
-                        inputEl.style.backgroundColor = '#dcfce3'; 
-                        setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+                } 
+                // 單欄貼上模式
+                else {
+                    const val = cols[0]; 
+                    const inputEl = document.getElementById(`form-${formId}-${colType}-${currRow}`);
+                    if (inputEl && val) {
+                        if (colType === 'fall') {
+                            const str = val.toUpperCase();
+                            inputEl.checked = (str === 'F' || str === 'FALL' || str === '1' || str === 'TRUE');
+                        } else {
+                            inputEl.value = val;
+                            inputEl.style.backgroundColor = '#dcfce3'; 
+                            setTimeout(() => inputEl.style.backgroundColor = 'transparent', 500);
+                        }
                     }
                 }
             }
+            
+            // 無論這行有沒有資料，指標都要往下走，確保跟 Excel 絕對對齊！
             currRow++;
         }
     };
