@@ -549,10 +549,19 @@
         const container = document.getElementById('skater-forms-container');
         const fId = isNew ? `new-${formCounter}` : skaterData.id; 
         
-        const elements = skaterData.planned_elements ? skaterData.planned_elements.split(',').map(s => s.trim()) : [];
-        const infos = skaterData.planned_info ? skaterData.planned_info.split(',').map(s => s.trim()) : [];
-        const falls = skaterData.planned_falls ? skaterData.planned_falls.split(',').map(s => s.trim() === 'true') : [];
-
+        // 【修正核心 1】：優先使用陣列，避免逗號被錯誤切割
+        const elements = Array.isArray(skaterData.planned_elements) 
+            ? skaterData.planned_elements 
+            : (skaterData.planned_elements ? String(skaterData.planned_elements).split(',').map(s => s.trim()) : []);
+            
+        const infos = Array.isArray(skaterData.planned_info) 
+            ? skaterData.planned_info 
+            : (skaterData.planned_info ? String(skaterData.planned_info).split(',').map(s => s.trim()) : []);
+            
+        const falls = Array.isArray(skaterData.planned_falls) 
+            ? skaterData.planned_falls.map(v => String(v) === 'true') 
+            : (skaterData.planned_falls ? String(skaterData.planned_falls).split(',').map(s => s.trim() === 'true') : []);
+  
         let html = `
         <div class="bg-white p-6 rounded-2xl border ${isNew ? 'border-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.15)]' : 'border-slate-200 shadow-sm hover:shadow-md'} transition-shadow skater-form-block relative group" data-doc-id="${skaterData.id}">
             ${isNew ? '<div class="absolute -top-3 -right-3 bg-emerald-100 text-emerald-700 text-[10px] font-black px-3 py-1 rounded-full uppercase shadow-sm">New Form</div>' : ''}
@@ -657,20 +666,22 @@
                     }
                 }
 
+               // 【修正核心 2】：直接存入 Array，永遠消滅逗號 Bug
                 const skaterObj = {
                     competition: compName,
                     stn: parseInt(stnInput.value) || 0,
                     skater: name,
                     noc: nocInput.value.trim().toUpperCase(),
                     factor: parseFloat(factor),
-                    planned_elements: elementsArray.join(", "),
-                    planned_info: infoArray.join(", "),
-                    planned_falls: fallsArray.join(", ")
+                    planned_elements: elementsArray, // 不再使用 join
+                    planned_info: infoArray,         // 不再使用 join
+                    planned_falls: fallsArray        // 不再使用 join
                 };
 
                 if (docId) {
                     updateCount++;
                     return updateDoc(doc(db, "scores", docId), skaterObj);
+                } else {
                 } else {
                     addCount++;
                     return addDoc(collection(db, "scores"), skaterObj);
